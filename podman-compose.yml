@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app:z
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://ollama:11434/v1}
+    depends_on:
+      - ollama
+    networks:
+      - agent-network
+    restart: unless-stopped
+    user: "1000:1000"  # Use a specific user ID for rootless mode
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Containerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app:z
+      - frontend-node-modules:/app/node_modules:z
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_BASE_URL=ws://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - agent-network
+    restart: unless-stopped
+    user: "1000:1000"  # Use a specific user ID for rootless mode
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama:Z
+    networks:
+      - agent-network
+    restart: unless-stopped
+    security_opt:
+      - label=disable  # Disable SELinux labeling for this container
+
+networks:
+  agent-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  frontend-node-modules:  # Separate volume for node_modules to avoid permission issues
