@@ -32,9 +32,9 @@ class Settings(BaseSettings):
     
     # AI Model settings
     MODEL: str = "llama3.2:1b"  # model for AI generation
-    OPENAI_BASE_URL: str = "http://localhost:11434/v1"  # Ollama's default endpoint
-    OPENAI_API_KEY: str = "ollama"  # The API key is required but its value is arbitrary
-    
+    OPENAI_BASE_URL: str = "http://localhost:11434/v1"
+    OPENAI_API_KEY: str ="ollama"
+
     # Terrain features (for visualization)
     TERRAIN_FEATURES: dict = {
         'lake': {

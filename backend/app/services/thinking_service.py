@@ -4,8 +4,6 @@ import logging
 from typing import List, Dict, Any, Tuple, Optional
 import asyncio
 
-from openai import OpenAI
-
 from app.models.agent import Agent
 from app.core.config import settings
 
@@ -28,6 +26,8 @@ class ThinkingService:
                     base_url=settings.OPENAI_BASE_URL,
                     api_key=settings.OPENAI_API_KEY
                 )
+                logger.info("OpenAI client initialized successfully")
+
             except Exception as e:
                 logger.error(f"Failed to initialize OpenAI client: {e}")
         

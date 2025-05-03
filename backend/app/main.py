@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import uvicorn
 import logging
+import json
 from typing import List, Dict, Any
 
 from app.routers import agents
@@ -15,6 +16,17 @@ from app.services.thinking_service import ThinkingService
 
 # Setup logging
 logger = setup_logging()
+
+# Setup detailed logging for WebSockets
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+# Set more detailed logging for specific modules
+logging.getLogger("app.routers.websockets").setLevel(logging.DEBUG)
+logging.getLogger("app.services.conversation_service").setLevel(logging.DEBUG)
+logging.getLogger("app.services.agent_service").setLevel(logging.DEBUG)
+
 
 # Shared state for WebSocket clients
 connected_clients: List[WebSocket] = []
@@ -71,41 +83,87 @@ app.include_router(agents.router, prefix="/api")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connected_clients.append(websocket)
+    logger.info(f"WebSocket client connected. Total clients: {len(connected_clients)}")
+    
     try:
+        # Send initial data to the client
+        agents_data = app.state.agent_service.get_agents_data()
+        await websocket.send_json({
+            "type": "agent_update",
+            "data": agents_data
+        })
+        
+        conversations = app.state.conversation_service.get_conversations()
+        await websocket.send_json({
+            "type": "conversation_update",
+            "data": conversations
+        })
+        
+        # Keep connection alive and handle client messages
         while True:
-            # Keep connection alive and handle client messages
             data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
-            else:
-                # Process other client messages
-                await process_client_message(websocket, data, app)
+            logger.debug(f"Received WebSocket message: {data}")
+            await process_client_message(websocket, data, app)
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
     finally:
-        connected_clients.remove(websocket)
+        if websocket in connected_clients:
+            connected_clients.remove(websocket)
+        logger.info(f"WebSocket client removed. Total clients: {len(connected_clients)}")
 
 async def process_client_message(websocket: WebSocket, data: str, app: FastAPI):
     """Process messages from WebSocket clients."""
     try:
         # Parse message and handle commands
-        import json
         message = json.loads(data)
         command = message.get("command")
+        logger.debug(f"Processing client command: {command}")
         
+        if command == "ping":
+            await websocket.send_json({"type": "pong", "time": message.get("time", 0)})
+            return
+            
         if command == "start_simulation":
             app.state.simulation_running = True
             await websocket.send_json({"status": "simulation_started"})
+            
         elif command == "stop_simulation":
             app.state.simulation_running = False
             await websocket.send_json({"status": "simulation_stopped"})
+            
         elif command == "reset_simulation":
             app.state.agent_service.reset_agents(message.get("num_agents", settings.NUM_AGENTS))
             await broadcast_agent_update(app)
             await websocket.send_json({"status": "simulation_reset"})
+            
         elif command == "update_speed":
             app.state.simulation_speed = message.get("speed", settings.MOVE_INTERVAL)
             await websocket.send_json({"status": "speed_updated"})
+            
+        elif command == "get_agents":
+            agents_data = app.state.agent_service.get_agents_data()
+            await websocket.send_json({
+                "type": "agent_update", 
+                "data": agents_data
+            })
+            
+        elif command == "get_conversations":
+            conversations = app.state.conversation_service.get_conversations()
+            logger.debug(f"Sending conversations: {len(conversations)} items")
+            await websocket.send_json({
+                "type": "conversation_update", 
+                "data": conversations
+            })
+            
+        else:
+            logger.warning(f"Unknown command: {command}")
+            await websocket.send_json({"error": f"Unknown command: {command}"})
+            
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON received: {data}")
+        await websocket.send_json({"error": "Invalid JSON format"})
     except Exception as e:
         logger.error(f"Error processing client message: {e}")
         await websocket.send_json({"status": "error", "message": str(e)})
@@ -124,11 +182,18 @@ async def broadcast_agent_update(app: FastAPI):
         "data": agents_data
     }
     
+    disconnected_clients = []
     for client in connected_clients:
         try:
             await client.send_json(message)
         except Exception as e:
             logger.error(f"Error sending to WebSocket client: {e}")
+            disconnected_clients.append(client)
+    
+    # Remove disconnected clients
+    for client in disconnected_clients:
+        if client in connected_clients:
+            connected_clients.remove(client)
 
 async def broadcast_conversation_update(app: FastAPI):
     """Broadcast conversation updates to all connected clients."""
@@ -138,17 +203,31 @@ async def broadcast_conversation_update(app: FastAPI):
     # Get conversation data
     conversations = app.state.conversation_service.get_conversations()
     
+    # Only broadcast if there are conversations to send
+    if not conversations:
+        logger.debug("No conversations to broadcast")
+        return
+        
+    logger.debug(f"Broadcasting {len(conversations)} conversations")
+    
     # Send updates to all clients
     message = {
         "type": "conversation_update",
         "data": conversations
     }
     
+    disconnected_clients = []
     for client in connected_clients:
         try:
             await client.send_json(message)
         except Exception as e:
             logger.error(f"Error sending to WebSocket client: {e}")
+            disconnected_clients.append(client)
+    
+    # Remove disconnected clients
+    for client in disconnected_clients:
+        if client in connected_clients:
+            connected_clients.remove(client)
 
 async def run_simulation(app: FastAPI):
     """Run the simulation loop in the background."""
@@ -161,15 +240,34 @@ async def run_simulation(app: FastAPI):
                 # Update agent positions
                 app.state.agent_service.update_agents()
                 
+                # Process agent conversations
+                conversations = app.state.agent_service.get_conversation_queue()
+                if conversations:
+                    logger.info(f"Processing {len(conversations)} conversations")
+                    app.state.conversation_service.add_pending_conversations(conversations)
+                    # Process conversations using available method (async or sync)
+                    try:
+                        await app.state.conversation_service.process_conversation_batch_async()
+                    except Exception as e:
+                        logger.error(f"Error in async conversation processing: {e}")
+                        app.state.conversation_service.process_conversation_batch()
+                    
+                    # Explicitly broadcast conversations after processing
+                    await broadcast_conversation_update(app)
+                
                 # Generate thoughts for agents that need them
-                app.state.thinking_service.process_thinking_batch()
+                thinking_agents = app.state.agent_service.get_agent_for_thinking()
+                if thinking_agents:
+                    app.state.thinking_service.add_pending_agents(thinking_agents)
+                    # Process thinking using available method (async or sync)
+                    try:
+                        await app.state.thinking_service.process_thinking_batch_async()
+                    except Exception as e:
+                        logger.error(f"Error in async thinking: {e}")
+                        app.state.thinking_service.process_thinking_batch()
                 
-                # Process conversations
-                app.state.conversation_service.process_conversation_batch()
-                
-                # Broadcast updates
+                # Broadcast agent updates
                 await broadcast_agent_update(app)
-                await broadcast_conversation_update(app)
             
             # Sleep based on simulation speed
             await asyncio.sleep(app.state.simulation_speed / 1000)  # Convert ms to seconds

@@ -101,4 +101,36 @@ const useWebSocket = (url) => {
   return { socket, isConnected, lastMessage, sendMessage };
 };
 
+
+const connectWebSocket = () => {
+  console.log("Attempting to connect to WebSocket...");
+  const ws = new WebSocket(`${WS_BASE_URL}/ws`);
+  
+  ws.onopen = () => {
+    console.log("WebSocket connection established successfully");
+    setSocket(ws);
+  };
+  
+  ws.onerror = (error) => {
+    console.error("WebSocket connection error:", error);
+  };
+  
+  ws.onclose = (event) => {
+    console.log("WebSocket connection closed:", event.code, event.reason);
+    // Consider implementing reconnection logic here
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log("WebSocket message received:", data);
+      // Handle the message
+    } catch (error) {
+      console.error("Error parsing WebSocket message:", error);
+    }
+  };
+  
+  return ws;
+};
+
 export default useWebSocket;

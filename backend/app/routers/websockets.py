@@ -16,7 +16,14 @@ async def websocket_endpoint(websocket: WebSocket, request: Request):
     await websocket.accept()
     connected_clients.append(websocket)
     
-    logger.info(f"WebSocket client connected. Total clients: {len(connected_clients)}")
+    logger.debug(f"WebSocket client connected. Total clients: {len(connected_clients)}")
+    
+    # Start the conversation broadcast task if it's not already running
+    if not hasattr(request.app.state, "conversation_broadcast_task"):
+        logger.info("Starting conversation broadcast task")
+        request.app.state.conversation_broadcast_task = asyncio.create_task(
+            ensure_conversation_broadcast(request.app)
+        )
     
     try:
         while True:
@@ -24,6 +31,7 @@ async def websocket_endpoint(websocket: WebSocket, request: Request):
             
             # Handle incoming messages
             try:
+                logger.debug(f"Received message: {data}")
                 message = json.loads(data)
                 await handle_client_message(websocket, message, request.app)
             except json.JSONDecodeError:
@@ -37,8 +45,8 @@ async def websocket_endpoint(websocket: WebSocket, request: Request):
         logger.info("WebSocket client disconnected")
     finally:
         connected_clients.remove(websocket)
-        logger.info(f"WebSocket client removed. Total clients: {len(connected_clients)}")
-
+        logger.debug(f"WebSocket client removed. Total clients: {len(connected_clients)}")
+        
 async def handle_client_message(websocket: WebSocket, message: Dict[str, Any], app):
     """Handle incoming WebSocket messages."""
     command = message.get("command")
@@ -121,3 +129,19 @@ async def broadcast_message(message: Dict[str, Any]):
     for client in disconnected_clients:
         if client in connected_clients:
             connected_clients.remove(client)
+
+
+async def ensure_conversation_broadcast(app):
+    """
+    Periodically checks for new conversations and broadcasts them.
+    This ensures conversations are sent even if the regular broadcast
+    mechanism somehow fails.
+    """
+    while True:
+        try:
+            await broadcast_conversation_update(app)
+            # Wait for 2 seconds before checking again
+            await asyncio.sleep(2)
+        except Exception as e:
+            logger.error(f"Error in conversation broadcast: {e}")
+            await asyncio.sleep(2)

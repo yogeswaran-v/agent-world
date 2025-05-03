@@ -47,18 +47,20 @@ export default function Home() {
     if (lastMessage) {
       try {
         const data = JSON.parse(lastMessage);
+        console.log('Received WebSocket message:', data);
         
         // Handle different message types
         if (data.type === 'agent_update') {
           handleAgentUpdate(data.data);
         } else if (data.type === 'conversation_update') {
+          console.log('Conversation update received:', data.data);
           handleConversationUpdate(data.data);
         } else if (data.status === 'simulation_started') {
-          // Handle simulation start confirmation
+          console.log('Simulation started');
         } else if (data.status === 'simulation_stopped') {
-          // Handle simulation stop confirmation
+          console.log('Simulation stopped');
         } else if (data.status === 'simulation_reset') {
-          // Handle simulation reset confirmation
+          console.log('Simulation reset');
         }
       } catch (error) {
         console.error('Error processing message:', error);
@@ -69,11 +71,38 @@ export default function Home() {
   // Initial data fetch when connection is established
   useEffect(() => {
     if (isConnected) {
+      console.log('WebSocket connected, requesting initial data');
       // Request initial data
       sendMessage(JSON.stringify({ command: 'get_agents' }));
       sendMessage(JSON.stringify({ command: 'get_conversations' }));
     }
   }, [isConnected, sendMessage]);
+
+  // Share socket globally for other components to access
+  useEffect(() => {
+    if (socket) {
+      window.socket = socket;
+    }
+    return () => {
+      // Clean up global reference when component unmounts
+      if (window.socket === socket) {
+        window.socket = null;
+      }
+    };
+  }, [socket]);
+
+  // Request conversations periodically to ensure we get updates
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const intervalId = setInterval(() => {
+      if (isRunning) {
+        sendMessage(JSON.stringify({ command: 'get_conversations' }));
+      }
+    }, 5000); // Check every 5 seconds while simulation is running
+    
+    return () => clearInterval(intervalId);
+  }, [isConnected, isRunning, sendMessage]);
 
   return (
     <>
