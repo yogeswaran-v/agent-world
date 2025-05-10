@@ -1,4 +1,3 @@
-// frontend/components/info/Conversations.js
 import React, { useEffect, useState } from 'react';
 
 export const Conversations = ({ conversations: initialConversations = [] }) => {
@@ -11,7 +10,7 @@ export const Conversations = ({ conversations: initialConversations = [] }) => {
         const data = JSON.parse(event.data);
         
         if (data.type === 'conversation_update') {
-          console.log("Conversation update received:", data.data.length, "conversations");
+          console.log("Conversation update received:", data.data);
           setConversations(data.data);
         }
       } catch (error) {
@@ -43,21 +42,21 @@ export const Conversations = ({ conversations: initialConversations = [] }) => {
     };
   }, []);
 
-  // Render the conversations
+  // Enhanced rendering with better styling and formatting
   return (
     <div className="bg-slate-800 rounded-lg shadow-lg">
       <h2 className="text-xl font-bold p-4 bg-slate-700 text-white">Conversations</h2>
-      <div className="p-4 max-h-48 overflow-y-auto">
+      <div className="p-4 max-h-72 overflow-y-auto">
         {conversations && conversations.length > 0 ? (
-          <ul className="space-y-2 text-gray-300">
+          <ul className="space-y-3 text-gray-300">
             {conversations.map((conv, index) => (
               <li key={index} className="border-b border-gray-700 pb-2">
-                <pre className="whitespace-pre-line text-sm font-mono">{conv}</pre>
+                <div className="whitespace-pre-line text-sm font-mono">{conv}</div>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-gray-400 italic">No conversations yet</p>
+          <p className="text-gray-400 italic text-center">No conversations yet</p>
         )}
       </div>
     </div>

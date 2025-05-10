@@ -67,6 +67,7 @@ export default function Home() {
       }
     }
   }, [lastMessage, handleAgentUpdate, handleConversationUpdate]);
+  
 
   // Initial data fetch when connection is established
   useEffect(() => {
@@ -77,6 +78,20 @@ export default function Home() {
       sendMessage(JSON.stringify({ command: 'get_conversations' }));
     }
   }, [isConnected, sendMessage]);
+
+
+  // Request conversations periodically to ensure we get updates
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const intervalId = setInterval(() => {
+      if (isRunning) {
+        sendMessage(JSON.stringify({ command: 'get_conversations' }));
+      }
+    }, 5000); // Check every 5 seconds while simulation is running
+    
+    return () => clearInterval(intervalId);
+  }, [isConnected, isRunning, sendMessage]);
 
   // Share socket globally for other components to access
   useEffect(() => {

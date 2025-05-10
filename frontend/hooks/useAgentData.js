@@ -26,7 +26,12 @@ const useAgentData = () => {
   
   // Handle conversation updates from the server
   const handleConversationUpdate = useCallback((conversationData) => {
-    setConversations(conversationData);
+    console.log('Updating conversations:', conversationData);
+    if (Array.isArray(conversationData)) {
+      setConversations(conversationData);
+    } else {
+      console.error('Received non-array conversation data:', conversationData);
+    }
   }, []);
   
   return {
