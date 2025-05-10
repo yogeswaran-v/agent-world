@@ -26,6 +26,8 @@ class Agent:
         self.last_thought = ""
         self.conversations: List[str] = []
         self.conversation_cooldown = 0  # Cooldown to prevent conversation spam
+        self.move_enabled = True  # Add this flag
+
         
         # Improved smooth movement parameters
         self.move_progress = 1.0  # 1.0 means movement is complete
@@ -63,6 +65,10 @@ class Agent:
     
     def move(self, agents: List['Agent'], world_size: int, conversation_queue: List[Tuple['Agent', 'Agent']]) -> None:
         """Move the agent in the world."""
+        
+        if not self.move_enabled:
+            return
+
         # If the agent is currently conversing, do not move
         if any(task[0].id == self.id or task[1].id == self.id for task in conversation_queue):
             return

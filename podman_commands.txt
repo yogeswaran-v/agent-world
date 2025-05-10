@@ -1,0 +1,27 @@
+podman network create agent-network
+
+podman stop backend
+podman rm backend
+
+podman stop frontend
+podman rm frontend
+
+# Build the real backend
+podman build -t localhost/agent-world-backend:latest -f backend/Containerfile ./backend
+
+# Run the real backend
+podman run -d --name backend --network agent-network -p 8000:8000 localhost/agent-world-backend:latest
+
+# Build the real frontend
+podman build -t localhost/agent-world-frontend:latest -f frontend/Containerfile ./frontend
+
+# Run the real frontend
+podman run -d --name frontend --network agent-network -p 3000:3000 localhost/agent-world-frontend:latest
+
+podman ps
+
+podman logs backend
+
+podman logs frontend
+
+podman images
