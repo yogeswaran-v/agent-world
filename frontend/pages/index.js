@@ -13,12 +13,40 @@ import { DEFAULT_NUM_AGENTS, DEFAULT_SIMULATION_SPEED } from '../lib/constants';
 
 export default function Home() {
   // Get WebSocket connection
+  // Dynamically select ws or wss and host based on environment
+  let wsProtocol = 'ws';
+  let wsHost = 'backend:8000';
+  if (typeof window !== 'undefined') {
+    // Handle GitHub Codespaces environment
+    if (window.location.hostname.includes('github.dev')) {
+      // In Codespaces, use the same hostname but different port
+      wsProtocol = 'wss'; // Codespaces uses HTTPS, so we need WSS
+      // Use the current hostname but change port from 3000 to 8000
+      const currentHost = window.location.hostname;
+      const backendHost = currentHost.replace('-3000.', '-8000.');
+      wsHost = backendHost;
+    } else {
+      // For local development
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      
+      if (isLocalhost) {
+        wsProtocol = 'ws'; // Force ws for localhost development
+        wsHost = 'localhost:8000';
+      } else {
+        // For other production environments
+        wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        wsHost = 'backend:8000';
+      }
+    }
+  }
+  const wsUrl = `${wsProtocol}://${wsHost}/ws`;
+  console.log('WebSocket URL:', wsUrl, 'Window location:', typeof window !== 'undefined' ? window.location.href : 'SSR');
   const { 
     socket, 
     isConnected, 
     lastMessage, 
     sendMessage 
-  } = useWebSocket('ws://localhost:8000/ws');
+  } = useWebSocket(wsUrl);
 
   // Agent data management
   const { 

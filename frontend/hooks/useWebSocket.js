@@ -31,44 +31,53 @@ const useWebSocket = (url) => {
       return cleanup;
     }
     
-    // Create a new WebSocket connection
-    const newSocket = new WebSocket(url);
+    console.log('Attempting to create WebSocket connection to:', url);
     
-    // Set up event handlers
-    newSocket.onopen = () => {
-      console.log('WebSocket connected');
-      setIsConnected(true);
+    try {
+      // Create a new WebSocket connection
+      const newSocket = new WebSocket(url);
       
-      // Send any queued messages
-      while (messageQueueRef.current.length > 0) {
-        const message = messageQueueRef.current.shift();
-        newSocket.send(message);
-      }
-    };
-    
-    newSocket.onclose = (event) => {
-      console.log('WebSocket disconnected', event);
+      // Set up event handlers
+      newSocket.onopen = () => {
+        console.log('WebSocket connected to:', url);
+        setIsConnected(true);
+        
+        // Send any queued messages
+        while (messageQueueRef.current.length > 0) {
+          const message = messageQueueRef.current.shift();
+          newSocket.send(message);
+        }
+      };
+      
+      newSocket.onclose = (event) => {
+        console.log('WebSocket disconnected from:', url, 'Code:', event.code, 'Reason:', event.reason, 'WasClean:', event.wasClean);
+        setIsConnected(false);
+        
+        // Set up reconnection
+        reconnectTimeoutRef.current = setTimeout(() => {
+          console.log('Attempting to reconnect to:', url);
+          cleanup();
+          // This will trigger the effect again
+          setSocket(null);
+        }, 3000);
+      };
+      
+      newSocket.onerror = (error) => {
+        console.error('WebSocket error for:', url, error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+      };
+      
+      newSocket.onmessage = (event) => {
+        setLastMessage(event.data);
+      };
+      
+      // Store the socket in state
+      setSocket(newSocket);
+      
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
       setIsConnected(false);
-      
-      // Set up reconnection
-      reconnectTimeoutRef.current = setTimeout(() => {
-        console.log('Attempting to reconnect...');
-        cleanup();
-        // This will trigger the effect again
-        setSocket(null);
-      }, 3000);
-    };
-    
-    newSocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-    
-    newSocket.onmessage = (event) => {
-      setLastMessage(event.data);
-    };
-    
-    // Store the socket in state
-    setSocket(newSocket);
+    }
     
     // Clean up on unmount
     return cleanup;

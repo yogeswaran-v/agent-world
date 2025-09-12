@@ -1,0 +1,65 @@
+podman network create agent-network
+
+podman stop backend
+podman rm backend
+
+
+# Build the real backend
+podman build -t localhost/agent-world-backend:latest -f backend/Containerfile ./backend
+
+# Run the real backend
+podman run -d --name backend --network agent-network -p 8000:8000 localhost/agent-world-backend:latest
+
+podman stop frontend
+podman rm frontend
+
+# Build the real frontend
+podman build -t localhost/agent-world-frontend:latest -f frontend/Containerfile ./frontend
+
+# Run the real frontend
+podman run -d --name frontend --network agent-network -p 3000:3000 localhost/agent-world-frontend:latest
+
+podman ps
+
+podman logs backend
+
+podman logs frontend
+
+podman images
+
+
+# --- Ollama LLM Setup (Containerized) ---
+# Pull the latest Ollama image
+podman pull docker.io/ollama/ollama:latest
+
+# Run Ollama in a container on the agent-network
+podman run -d --name ollama --network agent-network -p 11434:11434 docker.io/ollama/ollama:latest
+
+# (Optional) Check Ollama server status from host
+curl http://localhost:11434
+
+# (Optional) Check Ollama logs
+podman logs ollama
+
+# (Optional) Remove Ollama container
+podman rm -f ollama
+
+
+# --- Cleanup Commands (Stop all services to save Codespace quota) ---
+# Stop and remove all containers
+podman stop backend frontend ollama
+podman rm backend frontend ollama
+
+# Remove all built images to free disk space
+podman rmi localhost/agent-world-backend:latest localhost/agent-world-frontend:latest docker.io/ollama/ollama:latest
+
+# Remove the custom network
+podman network rm agent-network
+
+# Clean up unused images, containers, and volumes
+podman system prune -a -f
+
+# Verify everything is cleaned up
+podman ps -a
+podman images
+podman network ls

@@ -1,4 +1,8 @@
+
 FROM node:18-alpine
+
+# Install Python 3 and pip for debugging
+RUN apk add --no-cache python3 py3-pip
 
 WORKDIR /app
 
