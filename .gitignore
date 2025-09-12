@@ -1,0 +1,99 @@
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*.pyc
+*.pyo
+*.pyd
+*.out
+*.obj
+
+# Packages #
+############
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+*.egg
+*.whl
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+*.db
+
+# OS generated files #
+######################
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+desktop.ini
+
+# Editor directories and files #
+###############################
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.bak
+
+# Python #
+##########
+__pycache__/
+.env
+.venv
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node #
+########
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Docker #
+##########
+*.pid
+
+# Test output #
+###############
+coverage/
+*.cover
+*.lcov
+
+# Misc #
+########
+*.tmp
+*.temp
+*.orig
+*.rej
+*.bak
+*.backup
+*.old
+*.swp
+*.swo
+*.swn
+*.tmp
+*.pid
+*.seed
+*.pid.lock
