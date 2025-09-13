@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     AGENT_COLORS: str = "blue,red,green,orange,purple,cyan,magenta,yellow,teal,pink"
     
     # AI Model settings
-    MODEL: str = "llama2:latest"  # model for AI generation
+    MODEL: str = "llama3.2:1b"  # model for AI generation
     OPENAI_BASE_URL: str = "http://ollama:11434"
     OPENAI_API_KEY: str ="ollama"
 

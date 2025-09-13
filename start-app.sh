@@ -43,8 +43,14 @@ echo "🤖 Starting Ollama LLM service..."
 podman pull docker.io/ollama/ollama:latest 2>/dev/null || true
 podman run -d --name ollama --network agent-network -p 11434:11434 docker.io/ollama/ollama:latest
 
-# Wait a moment for services to start
-echo "⏳ Waiting for services to initialize..."
+# Wait for Ollama to start, then pull the required model
+echo "⏳ Waiting for Ollama to initialize..."
+sleep 10
+
+echo "📦 Pulling llama3.2:1b model for agent intelligence..."
+podman exec ollama ollama pull llama3.2:1b
+
+echo "⏳ Waiting for all services to fully initialize..."
 sleep 5
 
 # Check status
@@ -53,8 +59,9 @@ podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # Test connectivity
 echo "🔍 Testing service connectivity..."
-echo "Backend: $(curl -s http://localhost:8000/health 2>/dev/null || echo 'Not ready yet')"
+echo "Backend: $(curl -s http://localhost:8000/api/agents/ 2>/dev/null | grep -o '"name":' | wc -l || echo '0') agents loaded"
 echo "Ollama: $(curl -s http://localhost:11434 2>/dev/null || echo 'Not ready yet')"
+echo "Model: $(podman exec ollama ollama list 2>/dev/null | grep llama3.2:1b | cut -d' ' -f1 || echo 'Model not found')"
 
 echo ""
 echo "✅ Agent World Application is starting up!"
