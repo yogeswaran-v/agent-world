@@ -60,9 +60,10 @@ The simulation combines agent-based modeling with language model capabilities, c
 - **TailwindCSS**: Utility-first CSS framework
 
 ### Infrastructure
-- **Docker**: Containerization
-- **Docker Compose**: Multi-container orchestration
-- **Ollama**: Local language model hosting
+- **Podman**: Rootless containerization (preferred over Docker)
+- **Ollama**: Local LLM hosting (llama3.2:1b model)
+- **GitHub Codespaces**: Cloud development environment support
+- **WebSocket**: Real-time frontend-backend communication
 
 ## Project Structure
 
@@ -98,34 +99,115 @@ agent-world/
 
 ## Prerequisites
 
-- **Docker and Docker Compose** (recommended)
-- **Alternatively**: 
+- **Podman** (recommended) or **Docker**
+- **GitHub CLI** (if running in GitHub Codespaces)
+- **Alternatively for manual setup**: 
   - Python 3.11+ for backend
   - Node.js 18+ for frontend
   - Ollama for language model support
 
-## Installation
+## Quick Start
 
-### Docker Installation
+### 🚀 One-Command Setup
 
-1. Clone the repository:
+1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/agent-world.git
+   git clone https://github.com/yogeswaran-v/agent-world.git
    cd agent-world
    ```
 
-2. Create a `.env` file in the root directory (optional):
-   ```
-   OPENAI_API_KEY=your_api_key_here
-   OPENAI_BASE_URL=http://ollama:11434/v1
-   ```
-
-3. Build and start the containers:
+2. **Start the application:**
    ```bash
-   docker-compose up --build
+   ./start-app.sh
+   ```
+   
+   This will:
+   - Build all containers (backend, frontend, Ollama)
+   - Download the AI model (llama3.2:1b)
+   - Start all services
+   - Make ports public (if in Codespaces)
+   - Display service URLs
+
+3. **Access the application:**
+   - **Frontend**: https://YOUR_CODESPACE-3000.app.github.dev (in Codespaces) or http://localhost:3000 (local)
+   - **Backend**: https://YOUR_CODESPACE-8000.app.github.dev (in Codespaces) or http://localhost:8000 (local)
+
+### ⚡ Development Workflow
+
+After initial setup, use these commands for faster development:
+
+```bash
+# Quick restart after code changes (10-15 seconds)
+./restart-app.sh
+
+# Stop all services
+./stop-app.sh
+
+# Force rebuild (after dependency changes)
+./start-app.sh --rebuild
+```
+
+## Installation Methods
+
+### Method 1: Automated Setup (Recommended)
+
+Use the provided scripts for the fastest setup experience:
+
+```bash
+# Full setup with build
+./start-app.sh
+
+# Quick restart for development
+./restart-app.sh
+
+# Stop and cleanup
+./stop-app.sh
+```
+
+**Available script options:**
+- `./start-app.sh` - Full build and start (default)
+- `./start-app.sh --restart` - Quick restart without rebuilding
+- `./start-app.sh --no-build` - Start without rebuilding
+- `./start-app.sh --rebuild` - Force rebuild containers
+
+### Method 2: Manual Container Setup
+
+### Method 2: Manual Container Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yogeswaran-v/agent-world.git
+   cd agent-world
    ```
 
-### Manual Installation
+2. **Create the network:**
+   ```bash
+   podman network create agent-network
+   ```
+
+3. **Build and run containers:**
+   ```bash
+   # Backend
+   podman build -t agent-world-backend:latest -f backend/Containerfile ./backend
+   podman run -d --name backend --network agent-network -p 8000:8000 agent-world-backend:latest
+
+   # Frontend  
+   podman build -t agent-world-frontend:latest -f frontend/Containerfile ./frontend
+   podman run -d --name frontend --network agent-network -p 3000:3000 agent-world-frontend:latest
+
+   # Ollama (AI model service)
+   podman run -d --name ollama --network agent-network -p 11434:11434 docker.io/ollama/ollama:latest
+   
+   # Download the AI model
+   podman exec ollama ollama pull llama3.2:1b
+   ```
+
+4. **Make ports public (Codespaces only):**
+   ```bash
+   gh codespace ports visibility 3000:public 8000:public 11434:public --codespace $CODESPACE_NAME
+   ```
+
+### Method 3: Local Development Setup
 
 #### Backend Setup
 
@@ -174,80 +256,287 @@ agent-world/
 
 ## Running the Application
 
-### Using Docker
+### 🎯 Quick Access URLs
 
-After installation, the application should be running at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+After running `./start-app.sh`, your application will be available at:
 
-### Manual Running
+**GitHub Codespaces:**
+- **Frontend**: `https://YOUR_CODESPACE-3000.app.github.dev/`
+- **Backend API**: `https://YOUR_CODESPACE-8000.app.github.dev/`
+- **API Docs**: `https://YOUR_CODESPACE-8000.app.github.dev/docs`
+- **Ollama**: `https://YOUR_CODESPACE-11434.app.github.dev/`
 
-#### Backend
+**Local Development:**
+- **Frontend**: `http://localhost:3000`
+- **Backend API**: `http://localhost:8000`
+- **API Docs**: `http://localhost:8000/docs`
+- **Ollama**: `http://localhost:11434`
 
-1. Navigate to the backend directory with activated virtual environment
-2. Run the FastAPI server:
-   ```bash
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   ```
+### 🔧 Development Commands
 
-#### Frontend
+```bash
+# Start everything (first time or after major changes)
+./start-app.sh
 
-1. Navigate to the frontend directory
-2. Start the development server:
-   ```bash
-   npm run dev
-   ```
-3. Access the application at http://localhost:3000
+# Quick restart during development (much faster!)
+./restart-app.sh
+
+# Stop all services
+./stop-app.sh
+
+# View logs
+podman logs backend
+podman logs frontend
+podman logs ollama
+
+# Check container status
+podman ps
+```
+
+### 🚨 Troubleshooting
+
+**"Disconnected" status in UI:**
+- Ensure ports are public in Codespaces: `gh codespace ports visibility 3000:public 8000:public 11434:public`
+- Check if all containers are running: `podman ps`
+
+**Containers not starting:**
+- Clean up and restart: `./stop-app.sh && ./start-app.sh`
+
+**Port conflicts:**
+- Stop existing containers: `./stop-app.sh`
+
+### 🛠️ Advanced Development
+
+**Backend Development:**
+- **Service Architecture**: Agents, conversations, and thinking services
+- **WebSocket Integration**: Real-time communication with frontend
+- **AI Integration**: Ollama client for local LLM inference
+- **Configuration**: Environment-based settings with Pydantic
+
+**Frontend Development:**
+- **Component Architecture**: Modular React components
+- **3D Visualization**: Three.js integration for world rendering
+- **Real-time Updates**: WebSocket hooks for live data
+- **Responsive Design**: TailwindCSS for styling
+
+**Adding New Features:**
+1. **Backend**: Add service logic, update routers, extend models
+2. **Frontend**: Create components, add hooks, update UI
+3. **Integration**: Update WebSocket events, test end-to-end
+4. **Testing**: Use `./restart-app.sh` for quick iteration
+
+### 🧪 Testing
+
+```bash
+# Test API endpoints
+curl https://YOUR_CODESPACE-8000.app.github.dev/api/agents/
+
+# Test WebSocket connection (in browser console)
+const ws = new WebSocket('wss://YOUR_CODESPACE-8000.app.github.dev/ws');
+
+# Check AI model
+podman exec ollama ollama list
+```
+
+## 🤝 Contributing
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make changes** and test with `./restart-app.sh`
+4. **Commit changes**: `git commit -m 'Add amazing feature'`
+5. **Push to branch**: `git push origin feature/amazing-feature`
+6. **Open a Pull Request**
+
+### Development Guidelines
+
+- Use the provided scripts for consistent environment setup
+- Test changes with `./restart-app.sh` before committing
+- Follow the existing code structure and patterns
+- Update documentation for new features
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgements
+
+- **FastAPI** - High-performance Python web framework
+- **Next.js** - React framework for production
+- **Three.js** - 3D graphics library
+- **Ollama** - Local LLM hosting
+- **TailwindCSS** - Utility-first CSS framework
+- **Llama 3.2** - Meta's language model
+
+## 📊 Performance Notes
+
+- **First startup**: 2-3 minutes (builds containers + downloads AI model)
+- **Development restarts**: 10-15 seconds with `./restart-app.sh`
+- **AI inference**: Fast local inference with 1B parameter model
+- **Memory usage**: ~2-4GB total (containers + AI model)
+
+---
+
+**Built with ❤️ for AI agent simulation and research**
 
 ## Usage Guide
 
-### Basic Controls
+### 🎮 Getting Started
 
-1. **Start/Stop Simulation**: Click the Start/Pause button to control the simulation
-2. **Reset**: Click Reset to clear all agents and create new ones
-3. **Number of Agents**: Adjust the slider to change how many agents are in the world
-4. **Simulation Speed**: Adjust the slider to change how fast agents move and think
+1. **Start the application** using `./start-app.sh`
+2. **Open the frontend** in your browser
+3. **Wait for "Connected" status** in the top-left corner
+4. **Click "Start"** to begin the simulation
 
-### Interacting with Agents
+### 🎛️ Controls
 
-1. **Select an Agent**: Click on an agent in the 3D world or use the dropdown menu
-2. **View Memory**: The agent's memories appear in the Memory panel
-3. **Current Thought**: See what the agent is currently thinking
-4. **Conversations**: Read conversations between agents
+**Simulation Controls:**
+- **Start/Pause**: Control simulation execution
+- **Reset**: Create new agents with random personalities
+- **Agent Count**: Adjust number of agents (1-100)
+- **Speed**: Control simulation speed (100ms - 5000ms intervals)
 
-### 3D Navigation
+**Agent Selection:**
+- **Click agents** in the 3D world to select them
+- **Use dropdown** to select specific agents
+- **View details** in the right panels
 
-1. **Rotate**: Click and drag to rotate the camera
-2. **Zoom**: Use the mouse wheel to zoom in and out
-3. **Pan**: Right-click and drag to move the camera
+### 🤖 AI Features
+
+**Agent Intelligence:**
+- **Personalities**: Each agent has unique traits (curious, analytical, social, etc.)
+- **Goals**: Agents pursue individual objectives (explore, socialize, find optimal locations)
+- **Thinking**: Agents use AI to reason about their environment
+- **Memory**: Agents remember past events and interactions
+- **Conversations**: Agents can talk to nearby agents using natural language
+
+**AI Model:**
+- **Model**: Llama 3.2 1B (lightweight, fast inference)
+- **Local hosting**: Runs entirely offline via Ollama
+- **No API keys**: No external AI service required
+
+### 🌍 3D World Navigation
+
+**Camera Controls:**
+- **Rotate**: Left-click and drag
+- **Zoom**: Mouse wheel
+- **Pan**: Right-click and drag
+
+**Environment:**
+- **Terrain features**: Lake, mountains, open areas
+- **Agent visualization**: Colored spheres with movement trails
+- **Real-time updates**: Smooth agent movement and state changes
+
+## GitHub Codespaces
+
+This project is optimized for GitHub Codespaces development:
+
+### 🚀 One-Click Setup
+
+1. **Open in Codespaces**: Click "Code" → "Codespaces" → "Create codespace"
+2. **Wait for setup**: The environment will automatically configure
+3. **Run the app**: Execute `./start-app.sh` in the terminal
+4. **Access via browser**: Click the forwarded port links
+
+### ✨ Codespaces Features
+
+- **Pre-configured environment**: All dependencies included
+- **Automatic port forwarding**: Frontend, backend, and AI service accessible
+- **Public URLs**: Share your simulation with others
+- **Resource management**: Scripts include Codespace-specific optimizations
+- **No local setup**: Everything runs in the cloud
+
+### 🔧 Codespace-Specific Commands
+
+```bash
+# Make ports public (handled automatically by scripts)
+gh codespace ports visibility 3000:public 8000:public 11434:public
+
+# Check codespace environment
+echo $CODESPACE_NAME
+
+# Access URLs
+echo "Frontend: https://$CODESPACE_NAME-3000.app.github.dev"
+echo "Backend: https://$CODESPACE_NAME-8000.app.github.dev"
+```
 
 ## API Documentation
 
-The backend API documentation is available at `http://localhost:8000/docs` when the backend is running.
+The backend API documentation is available at `/docs` endpoint when the backend is running:
+- **Codespaces**: `https://YOUR_CODESPACE-8000.app.github.dev/docs`
+- **Local**: `http://localhost:8000/docs`
 
-Key endpoints:
+### Key Endpoints
 
-- `GET /api/agents`: Get all agents
-- `GET /api/agents/{agent_id}`: Get a specific agent
-- `POST /api/agents/reset`: Reset the simulation
-- `POST /api/agents/start`: Start the simulation
-- `POST /api/agents/stop`: Stop the simulation
-- `GET /api/agents/conversations`: Get all conversations
-- `WebSocket /ws`: Real-time updates connection
+- `GET /api/agents/` - Get all agents with their current state
+- `GET /api/agents/{agent_id}` - Get specific agent details
+- `POST /api/agents/reset` - Reset simulation with new agents
+- `POST /api/agents/start` - Start the simulation
+- `WebSocket /ws` - Real-time updates and communication
+
+### WebSocket Events
+
+The WebSocket connection provides real-time updates:
+- `agent_update` - Agent positions and state changes
+- `conversation_update` - New conversations between agents
+- `simulation_started` - Simulation state changes
+- `simulation_stopped` - Simulation state changes
 
 ## Development
 
-### Backend Development
+### 📁 Project Structure
 
-The backend follows a service-oriented architecture:
+```
+agent-world/
+├── 🚀 Quick Start Scripts
+│   ├── start-app.sh           # Full setup and start
+│   ├── restart-app.sh         # Quick development restart
+│   └── stop-app.sh           # Stop and cleanup
+│
+├── 🔧 Backend (FastAPI)
+│   ├── app/
+│   │   ├── main.py           # FastAPI application
+│   │   ├── routers/          # API endpoints
+│   │   ├── services/         # Business logic
+│   │   ├── models/           # Data models
+│   │   └── core/             # Configuration
+│   └── Containerfile         # Container build
+│
+├── 🎨 Frontend (Next.js)
+│   ├── components/           # React components
+│   ├── hooks/               # Custom hooks
+│   ├── pages/               # Next.js pages
+│   └── Containerfile        # Container build
+│
+└── 📚 Documentation
+    ├── README.md            # This file
+    └── DEVELOPMENT.md       # Development workflow
+```
 
-- **Routers**: Define API endpoints and handle HTTP requests
-- **Services**: Contain business logic for agents, conversations, and thinking
-- **Models**: Define data structures and validation
-- **Core**: Configure application settings and logging
+### 🔄 Development Workflow
 
-To add a new feature:
+**Recommended workflow for active development:**
+
+1. **Initial setup** (once):
+   ```bash
+   ./start-app.sh
+   ```
+
+2. **Daily development** (after code changes):
+   ```bash
+   ./restart-app.sh
+   ```
+
+3. **When adding dependencies**:
+   ```bash
+   ./start-app.sh --rebuild
+   ```
+
+4. **End of session**:
+   ```bash
+   ./stop-app.sh
+   ```
+
+### 🛠️ Advanced Development
 1. Define models in `app/models/`
 2. Implement business logic in `app/services/`
 3. Create API endpoints in `app/routers/`

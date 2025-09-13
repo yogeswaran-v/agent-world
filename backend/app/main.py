@@ -5,6 +5,7 @@ import asyncio
 import uvicorn
 import logging
 import json
+import os
 from typing import List, Dict, Any
 
 from app.routers import agents
@@ -69,7 +70,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        f"https://{os.getenv('CODESPACE_NAME', 'localhost')}-3000.app.github.dev",  # GitHub Codespaces frontend
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
