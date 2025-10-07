@@ -156,9 +156,9 @@ export default function Home() {
       </Head>
 
       <Layout>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left panel: Controls and agent info */}
-          <div className="md:col-span-1">
+          <div className="lg:col-span-1 space-y-6">
             <ControlPanel
               isRunning={isRunning}
               numAgents={numAgents}
@@ -173,35 +173,44 @@ export default function Home() {
               isConnected={isConnected}
             />
             
-            <div className="mt-4">
-              <AgentMemory 
-                memories={selectedAgent ? agents.find(a => a.id === selectedAgent)?.memory || [] : []} 
-              />
-            </div>
+            <AgentMemory 
+              memories={selectedAgent ? agents.find(a => a.id === selectedAgent)?.memory || [] : []} 
+            />
             
-            <div className="mt-4">
-              <AgentThought 
-                thought={selectedAgent ? agents.find(a => a.id === selectedAgent)?.last_thought || '' : ''} 
-              />
-            </div>
+            <AgentThought 
+              thought={selectedAgent ? agents.find(a => a.id === selectedAgent)?.last_thought || '' : ''} 
+            />
           </div>
           
           {/* Right panel: World visualization and conversations */}
-          <div className="md:col-span-2">
-            <div className="bg-slate-800 rounded-lg overflow-hidden shadow-lg">
-              <h2 className="text-xl font-bold p-4 bg-slate-700 text-white">3D World</h2>
-              <div className="h-[550px] w-full">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="glass glass-hover rounded-2xl overflow-hidden shadow-2xl border border-white/20">
+              <div className="glass-dark p-4 border-b border-white/10">
+                <h2 className="text-xl font-bold flex items-center text-white">
+                  <div className="w-8 h-8 rounded-full glass-button flex items-center justify-center mr-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-300">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                      <polyline points="3.27,6.96 12,12.01 20.73,6.96"/>
+                      <line x1="12" y1="22.08" x2="12" y2="12"/>
+                    </svg>
+                  </div>
+                  <span className="bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
+                    3D World Simulation
+                  </span>
+                </h2>
+              </div>
+              <div className="h-[550px] w-full relative">
                 <WorldCanvas 
                   agents={agents} 
                   selectedAgent={selectedAgent}
                   onAgentClick={setSelectedAgent}
                 />
+                {/* Overlay for better glass effect */}
+                <div className="absolute inset-0 pointer-events-none border border-white/5 rounded-b-2xl"></div>
               </div>
             </div>
             
-            <div className="mt-4">
-              <Conversations conversations={conversations} />
-            </div>
+            <Conversations conversations={conversations} />
           </div>
         </div>
       </Layout>

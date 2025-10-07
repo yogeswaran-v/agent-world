@@ -19,15 +19,20 @@ const SpeedControl = ({ value, onChange }) => {
   };
   
   return (
-    <input
-      type="range"
-      min="0"
-      max="100"
-      step="1"
-      value={sliderPosition}
-      onChange={handleChange}
-      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-    />
+    <div className="glass-input rounded-full p-1">
+      <input
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value={sliderPosition}
+        onChange={handleChange}
+        className="w-full h-2 bg-transparent rounded-lg appearance-none cursor-pointer slider"
+        style={{
+          background: `linear-gradient(to right, #10b981 0%, #10b981 ${100-sliderPosition}%, rgba(255,255,255,0.1) ${100-sliderPosition}%, rgba(255,255,255,0.1) 100%)`
+        }}
+      />
+    </div>
   );
 };
 

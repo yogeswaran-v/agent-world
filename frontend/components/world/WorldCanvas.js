@@ -17,6 +17,104 @@ const colorNameToHex = {
   teal: 0x008080,
 };
 
+// Create a 3D character model
+const createCharacterModel = (colorName, name) => {
+  const characterGroup = new THREE.Group();
+  const color = colorNameToHex[colorName] || 0xffffff;
+  
+  // Body (cylinder)
+  const bodyGeometry = new THREE.CylinderGeometry(3, 4, 12, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    color: color,
+    roughness: 0.6,
+    metalness: 0.1,
+  });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 8;
+  body.castShadow = true;
+  characterGroup.add(body);
+  
+  // Head (sphere)
+  const headGeometry = new THREE.SphereGeometry(2.5, 16, 16);
+  const headMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xfdbcb4, // Skin tone
+    roughness: 0.7,
+    metalness: 0.0,
+  });
+  const head = new THREE.Mesh(headGeometry, headMaterial);
+  head.position.y = 16;
+  head.castShadow = true;
+  characterGroup.add(head);
+  
+  // Eyes
+  const eyeGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+  const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+  
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.8, 16.5, 2);
+  characterGroup.add(leftEye);
+  
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.8, 16.5, 2);
+  characterGroup.add(rightEye);
+  
+  // Hat/Hair
+  const hatGeometry = new THREE.ConeGeometry(3, 4, 8);
+  const hatMaterial = new THREE.MeshStandardMaterial({ 
+    color: new THREE.Color(color).multiplyScalar(0.7), // Darker version of body color
+    roughness: 0.8,
+    metalness: 0.0,
+  });
+  const hat = new THREE.Mesh(hatGeometry, hatMaterial);
+  hat.position.y = 19;
+  hat.castShadow = true;
+  characterGroup.add(hat);
+  
+  // Arms
+  const armGeometry = new THREE.CylinderGeometry(0.8, 1, 8, 6);
+  const armMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xfdbcb4,
+    roughness: 0.7,
+    metalness: 0.0,
+  });
+  
+  const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+  leftArm.position.set(-4.5, 10, 0);
+  leftArm.rotation.z = 0.3;
+  leftArm.castShadow = true;
+  characterGroup.add(leftArm);
+  
+  const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+  rightArm.position.set(4.5, 10, 0);
+  rightArm.rotation.z = -0.3;
+  rightArm.castShadow = true;
+  characterGroup.add(rightArm);
+  
+  // Legs
+  const legGeometry = new THREE.CylinderGeometry(1, 1.2, 6, 6);
+  const legMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x4169e1, // Blue pants
+    roughness: 0.8,
+    metalness: 0.0,
+  });
+  
+  const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+  leftLeg.position.set(-1.5, 1, 0);
+  leftLeg.castShadow = true;
+  characterGroup.add(leftLeg);
+  
+  const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+  rightLeg.position.set(1.5, 1, 0);
+  rightLeg.castShadow = true;
+  characterGroup.add(rightLeg);
+  
+  // Add walking animation properties
+  characterGroup.userData.walkingOffset = Math.random() * Math.PI * 2;
+  characterGroup.userData.originalY = 0;
+  
+  return characterGroup;
+};
+
 const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
   const containerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -31,9 +129,43 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
   useEffect(() => {
     if (!containerRef.current) return;
     
-    // Create scene
+    // Create scene with better atmosphere
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a2e);
+    scene.fog = new THREE.Fog(0x87CEEB, 300, 800); // Atmospheric fog
+    
+    // Create gradient sky background
+    const skyGeometry = new THREE.SphereGeometry(1000, 32, 32);
+    const skyMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: new THREE.Color(0x0077be) },
+        bottomColor: { value: new THREE.Color(0x89cff0) },
+        offset: { value: 400 },
+        exponent: { value: 0.6 }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition + offset).y;
+          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+        }
+      `,
+      side: THREE.BackSide
+    });
+    const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+    scene.add(sky);
+    
     sceneRef.current = scene;
     
     // Create camera
@@ -63,32 +195,59 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
     controls.maxPolarAngle = Math.PI / 2;
     controlsRef.current = controls;
     
-    // Create ground
-    const groundGeometry = new THREE.PlaneGeometry(500, 500, 32, 32);
+    // Create realistic ground with texture-like material
+    const groundGeometry = new THREE.PlaneGeometry(500, 500, 64, 64);
+    
+    // Add some noise to the ground vertices for natural terrain
+    const vertices = groundGeometry.attributes.position.array;
+    for (let i = 0; i < vertices.length; i += 3) {
+      vertices[i + 2] = Math.random() * 2 - 1; // Small height variations
+    }
+    groundGeometry.attributes.position.needsUpdate = true;
+    groundGeometry.computeVertexNormals();
+    
     const groundMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x333344,
-      roughness: 0.8,
-      metalness: 0.2,
+      color: 0x4a5d23, // Natural grass color
+      roughness: 0.9,
+      metalness: 0.0,
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
     
-    // Add grid
-    const grid = new THREE.GridHelper(500, 50, 0x555555, 0x222222);
-    grid.position.y = 0.1;
+    // Add subtle grid for reference (less prominent)
+    const grid = new THREE.GridHelper(500, 25, 0x3a4a1a, 0x2a3a0a);
+    grid.position.y = 0.05;
+    grid.material.opacity = 0.3;
+    grid.material.transparent = true;
     scene.add(grid);
     
-    // Add ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+    // Enhanced lighting setup
+    const ambientLight = new THREE.AmbientLight(0x87CEEB, 0.4); // Soft blue ambient
     scene.add(ambientLight);
     
-    // Add directional light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(250, 300, 250);
+    // Main sun light
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    directionalLight.position.set(200, 400, 200);
     directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 1;
+    directionalLight.shadow.camera.far = 1000;
+    directionalLight.shadow.camera.left = -300;
+    directionalLight.shadow.camera.right = 300;
+    directionalLight.shadow.camera.top = 300;
+    directionalLight.shadow.camera.bottom = -300;
     scene.add(directionalLight);
+    
+    // Add hemisphere light for more natural lighting
+    const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x4a5d23, 0.6);
+    scene.add(hemisphereLight);
+    
+    // Enable shadows in renderer
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     
     // Add terrain features
     createTerrain(scene);
@@ -203,19 +362,13 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
       return;
     }
     
-    // Create new agent mesh
-    const geometry = new THREE.SphereGeometry(5, 16, 16);
-    const color = colorNameToHex[agent.color] || 0xffffff;
-    const material = new THREE.MeshStandardMaterial({ 
-      color,
-      roughness: 0.7,
-      metalness: 0.3,
-    });
+    // Create 3D character model instead of simple sphere
+    const characterGroup = createCharacterModel(agent.color, agent.name);
+    characterGroup.position.set(agent.x, 0, agent.y);
+    characterGroup.castShadow = true;
+    characterGroup.userData = { id: agent.id, type: 'agent' };
     
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(agent.x, 5, agent.y); // position y as height (5 units above ground)
-    mesh.castShadow = true;
-    mesh.userData = { id: agent.id, type: 'agent' };
+    const mesh = characterGroup; // Use the character group as the mesh
     
     // Create text label for agent name
     const canvas = document.createElement('canvas');
