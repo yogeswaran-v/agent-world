@@ -325,13 +325,14 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
   
   // Create terrain features
   const createTerrain = (scene) => {
-    // Create lake
+    // Create lake (centered in upper-left quadrant)
     const lakeShape = new THREE.Shape();
-    lakeShape.moveTo(50, 50);
-    lakeShape.lineTo(150, 75);
-    lakeShape.lineTo(200, 150);
-    lakeShape.lineTo(100, 125);
-    lakeShape.lineTo(50, 50);
+    lakeShape.moveTo(120, 120);
+    lakeShape.lineTo(180, 130);
+    lakeShape.lineTo(200, 180);
+    lakeShape.lineTo(140, 190);
+    lakeShape.lineTo(100, 160);
+    lakeShape.lineTo(120, 120);
     
     const lakeGeometry = new THREE.ShapeGeometry(lakeShape);
     const lakeMaterial = new THREE.MeshPhongMaterial({ 
@@ -346,7 +347,7 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
     lake.position.y = 0.2; // Slightly above ground
     scene.add(lake);
     
-    // Create mountains
+    // Create mountains (clustered in center-right area)
     const mountainGeometry = new THREE.ConeGeometry(15, 30, 4);
     const mountainMaterial = new THREE.MeshStandardMaterial({
       color: 0x777777,
@@ -354,18 +355,18 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
     });
     
     const mountain1 = new THREE.Mesh(mountainGeometry, mountainMaterial);
-    mountain1.position.set(350, 15, 300);
+    mountain1.position.set(320, 15, 240);
     scene.add(mountain1);
     
     const mountain2 = new THREE.Mesh(mountainGeometry, mountainMaterial);
-    mountain2.position.set(400, 15, 350);
+    mountain2.position.set(350, 15, 280);
     scene.add(mountain2);
     
     const mountain3 = new THREE.Mesh(mountainGeometry, mountainMaterial);
-    mountain3.position.set(450, 15, 300);
+    mountain3.position.set(380, 15, 250);
     scene.add(mountain3);
     
-    // Create forest
+    // Create forest (clustered around center)
     const treeGeometry = new THREE.ConeGeometry(5, 20, 8);
     const treeMaterial = new THREE.MeshStandardMaterial({
       color: 0x008800,
@@ -378,8 +379,14 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
       roughness: 0.9
     });
     
-    // Place trees
-    for (let i = 0; i < 10; i++) {
+    // Place trees in a more natural cluster around the center
+    const forestPositions = [
+      [240, 180], [260, 200], [280, 170], [250, 220], [270, 240],
+      [290, 190], [310, 210], [330, 180], [340, 200], [360, 170],
+      [220, 160], [300, 150], [320, 140], [280, 130], [260, 160]
+    ];
+    
+    for (let i = 0; i < Math.min(15, forestPositions.length); i++) {
       const treeGroup = new THREE.Group();
       
       // Create trunk
@@ -393,8 +400,7 @@ const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
       treeGroup.add(foliage);
       
       // Position the tree
-      const x = 300 + (i % 5) * 30;
-      const z = 50 + Math.floor(i / 5) * 30;
+      const [x, z] = forestPositions[i];
       treeGroup.position.set(x, 0, z);
       
       scene.add(treeGroup);

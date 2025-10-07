@@ -32,31 +32,31 @@ class Settings(BaseSettings):
     
     # AI Model settings
     MODEL: str = "llama3.2:1b"  # model for AI generation
-    OPENAI_BASE_URL: str = "http://ollama:11434"
+    OPENAI_BASE_URL: str = "http://ollama:11434/v1"
     OPENAI_API_KEY: str ="ollama"
 
     # Terrain features (for visualization)
     TERRAIN_FEATURES: dict = {
         'lake': {
-            'x': [50, 150, 200, 100, 50],
-            'y': [50, 75, 150, 125, 50],
+            'x': [120, 180, 200, 140, 100, 120],
+            'y': [120, 130, 180, 190, 160, 120],
             'color': 'rgba(0, 100, 220, 0.3)',
             'border': 'rgba(0, 100, 220, 0.5)',
             'name': 'Lake'
         },
         'mountains': {
-            'x': [350, 400, 450, 350],
-            'y': [300, 350, 300, 300],
+            'x': [320, 350, 380],
+            'y': [240, 280, 250],
             'color': 'rgba(120, 120, 120, 0.5)',
             'border': 'rgba(80, 80, 80, 0.8)',
             'name': 'Mountains'
         }
     }
     
-    # Forest positions
+    # Forest positions (clustered around center)
     FOREST_POSITIONS: dict = {
-        'x': list(range(300, 451, 15))[:10],  # 10 trees in x direction
-        'y': list(range(50, 201, 15))[:10],   # 10 trees in y direction
+        'x': [240, 260, 280, 250, 270, 290, 310, 330, 340, 360, 220, 300, 320, 280, 260],
+        'y': [180, 200, 170, 220, 240, 190, 210, 180, 200, 170, 160, 150, 140, 130, 160],
     }
     
     class Config:

@@ -42,8 +42,8 @@ class AgentService:
             agent = Agent(
                 agent_id=i,
                 name=agent_names[i],
-                x=random.randint(50, self.world_size-50),
-                y=random.randint(50, self.world_size-50),
+                x=random.randint(150, 350),  # Spawn within terrain area
+                y=random.randint(150, 300),  # Spawn within terrain area
                 color=agent_colors[i % len(agent_colors)]
             )
             self.agents.append(agent)

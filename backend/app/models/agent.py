@@ -144,9 +144,9 @@ class Agent:
         # Set new target
         target_x, target_y = target_position
         
-        # Ensure targets are within world bounds
-        self.target_x = max(10, min(target_x, world_size - 10))
-        self.target_y = max(10, min(target_y, world_size - 10))
+        # Ensure targets are within terrain bounds
+        self.target_x = max(150, min(target_x, 350))
+        self.target_y = max(150, min(target_y, 300))
         
         # Record memory if actually moving
         if self.target_x != self.x or self.target_y != self.y:
@@ -185,23 +185,27 @@ class Agent:
         # Current position
         curr_x, curr_y = self.x, self.y
         
+        # Define terrain boundaries (agents stay within terrain area)
+        min_x, max_x = 150, 350
+        min_y, max_y = 150, 300
+        
         # Calculate random step size (for more natural movement)
         step_size = random.randint(5, 15)
         
-        if direction == 'north' and curr_y > 10:
-            return (curr_x, max(curr_y - step_size, 10))
-        elif direction == 'south' and curr_y < world_size - 10:
-            return (curr_x, min(curr_y + step_size, world_size - 10))
-        elif direction == 'east' and curr_x < world_size - 10:
-            return (min(curr_x + step_size, world_size - 10), curr_y)
-        elif direction == 'west' and curr_x > 10:
-            return (max(curr_x - step_size, 10), curr_y)
+        if direction == 'north' and curr_y > min_y:
+            return (curr_x, max(curr_y - step_size, min_y))
+        elif direction == 'south' and curr_y < max_y:
+            return (curr_x, min(curr_y + step_size, max_y))
+        elif direction == 'east' and curr_x < max_x:
+            return (min(curr_x + step_size, max_x), curr_y)
+        elif direction == 'west' and curr_x > min_x:
+            return (max(curr_x - step_size, min_x), curr_y)
         else:
             # Stay in place with small random movement for natural look
             jitter = random.randint(-3, 3)
             return (
-                max(10, min(curr_x + jitter, world_size - 10)),
-                max(10, min(curr_y + jitter, world_size - 10))
+                max(min_x, min(curr_x + jitter, max_x)),
+                max(min_y, min(curr_y + jitter, max_y))
             )
     
     def _check_for_interactions(self, agents: List['Agent'], conversation_queue: List[Tuple['Agent', 'Agent']]) -> None:
