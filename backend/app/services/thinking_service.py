@@ -1,57 +1,66 @@
-import time
-import random
-import logging
-from typing import List, Dict, Any, Tuple, Optional
 import asyncio
-
+import hashlib
+import random
+from typing import List, Dict, Any, Tuple
 from app.models.agent import Agent
 from app.core.config import settings
-
+import logging
 logger = logging.getLogger(__name__)
+import openai
+
 
 class ThinkingService:
-    """Service for managing agent thinking processes."""
-    
     def __init__(self):
-        """Initialize the thinking service."""
-        self._pending_agents: List[Tuple[Agent, List[Agent]]] = []
-        self._thought_cache: Dict[int, str] = {}  # Simple cache for similar thinking scenarios
-        
-        self.openai_client = None
-        if settings.OPENAI_API_KEY:
+        # Initialize multiple LLM clients for different agents
+        self.llm_clients = {}
+        for service_id, service_config in settings.OLLAMA_SERVICES.items():
             try:
-                # Use synchronous OpenAI client instead of AsyncOpenAI
-                from openai import OpenAI
-                self.openai_client = OpenAI(
-                    base_url=settings.OPENAI_BASE_URL,
-                    api_key=settings.OPENAI_API_KEY
+                base_url = service_config["base_url"] if isinstance(service_config, dict) else service_config
+                client = openai.OpenAI(
+                    base_url=base_url,
+                    api_key="dummy"  # Ollama doesn't need real API key
                 )
-                logger.info("OpenAI client initialized successfully")
-
+                self.llm_clients[service_id] = client
+                logger.info(f"Initialized LLM client for service {service_id}: {base_url}")
             except Exception as e:
-                logger.error(f"Failed to initialize OpenAI client: {e}")
+                logger.error(f"Failed to initialize LLM client for {service_id}: {e}")
         
-        logger.info("Initialized ThinkingService")
+        self.openai_client = self.llm_clients.get("service_1")
+        self._thought_cache = {}
+        self._pending_agents = []
+        self._agent_positions_history = {}
+        
+    def _get_llm_client_for_agent(self, agent: Agent) -> openai.OpenAI:
+        """Get the appropriate LLM client for the given agent."""
+        service_keys = list(self.llm_clients.keys())
+        if not service_keys:
+            return self.openai_client
+        
+        service_index = hash(agent.id) % len(service_keys)
+        service_key = service_keys[service_index]
+        
+        client = self.llm_clients.get(service_key, self.openai_client)
+        logger.debug(f"Agent {agent.name} using LLM service: {service_key}")
+        return client
     
-    def register_agent_for_thinking(self, agent: Agent, nearby_agents: List[Agent]) -> None:
-        """Register an agent to be included in the next batch thinking process."""
-        self._pending_agents.append((agent, nearby_agents))
-    
-    def _generate_cache_key(self, agent: Agent, nearby_agent_info: List[Dict[str, Any]]) -> int:
+    def add_agents_to_thinking_queue(self, agents: List[Tuple[Agent, List[Agent]]]) -> None:
+        """Add agents to the thinking queue for batch processing."""
+        self._pending_agents.extend(agents)
+        
+    def _generate_cache_key(self, agent: Agent, nearby_agents: List[Dict]) -> str:
         """Generate a cache key based on agent state and nearby agents."""
-        # Simple cache key based on position, nearby agents, and a time window (changes every 30 seconds)
-        time_window = int(time.time() / 30)  # Changes every 30 seconds
-        position_bucket = (int(agent.x / 20), int(agent.y / 20))  # Position bucketed to reduce variations
-        
-        # Hash nearby agents by distance buckets
-        nearby_hash = hash(tuple(sorted([(a['name'], int(a['distance'] / 10)) for a in nearby_agent_info])))
-        
-        return hash((agent.name, agent.personality, position_bucket, nearby_hash, time_window))
+        key_parts = [
+            agent.name,
+            agent.personality,
+            str(len(agent.memory)),
+            str(len(nearby_agents))
+        ]
+        key_string = "|".join(key_parts)
+        return hashlib.md5(key_string.encode()).hexdigest()[:16]
     
-    async def process_thinking_batch_async(self) -> None:
-        """Process all pending thinking requests in a single batch asynchronously."""
+    def process_thinking_batch(self) -> None:
+        """Process all pending thinking requests synchronously."""
         try:
-            # Get the current batch of agents
             current_batch = self._pending_agents.copy()
             self._pending_agents = []
             
@@ -60,175 +69,21 @@ class ThinkingService:
                 
             logger.info(f"Processing thinking batch for {len(current_batch)} agents")
             
-            # If no API client, use random thoughts
-            if not self.openai_client:
-                for agent, _ in current_batch:
-                    directions = ["north", "south", "east", "west", "stay"]
-                    random_thought = f"I think I'll move {random.choice(directions)} because that seems interesting."
-                    agent.next_thought = random_thought
-                return
-            
-            # Prepare batch prompts
-            tasks = []
-            cached_agents = []
-            
             for agent, all_agents in current_batch:
-                # Calculate nearby agents for context
-                nearby_agents = []
-                other_agents = [a for a in all_agents if a.id != agent.id]
-                
-                # Calculate distances once
-                agent_distances = [(a, ((agent.x - a.x)**2 + (agent.y - a.y)**2)**0.5) 
-                                for a in other_agents]
-                
-                # Sort by distance and take closest 2
-                agent_distances.sort(key=lambda x: x[1])
-                closest_agents = agent_distances[:2]
-                
-                for nearby_agent, distance in closest_agents:
-                    if distance < 100:
-                        nearby_agents.append({
-                            "name": nearby_agent.name,
-                            "distance": distance,
-                            "personality": nearby_agent.personality
-                        })
-                
-                # Check cache first
-                cache_key = self._generate_cache_key(agent, nearby_agents)
-                if cache_key in self._thought_cache:
-                    agent.next_thought = self._thought_cache[cache_key]
-                    cached_agents.append(agent)
-                    continue
-                
-                # Build prompt if not in cache
-                prompt = f"""
-                You are {agent.name}, an agent with {agent.personality} personality.
-                Goal: {agent.goal}
-                Position: ({agent.x}, {agent.y})
-                Recent memories: {agent.memory[-2:] if agent.memory else []}
-                Nearby agents: {nearby_agents}
-                
-                Based on this, what direction will you move (north, south, east, west, or stay)? Reply with 1-2 sentences.
-                """
-                
-                # Create task to process this agent's thinking
-                tasks.append({
-                    "agent": agent,
-                    "cache_key": cache_key,
-                    "prompt": prompt
-                })
-            
-            # If all agents were handled by cache, we're done
-            if not tasks:
-                logger.info("All agents were handled by cache")
-                return
-                
-            # Process tasks in parallel with asyncio
-            await asyncio.gather(*[self._process_agent_thought(task) for task in tasks])
-            
-        except Exception as e:
-            logger.error(f"Error in thinking batch process: {e}")
-    
-    async def _process_agent_thought(self, task: Dict[str, Any]) -> None:
-        """Process a single agent's thought."""
-        try:
-            if not self.openai_client:
-                # Create a simple random thought if no client is available
-                directions = ["north", "south", "east", "west", "stay"]
-                random_thought = f"I think I'll move {random.choice(directions)} because that seems interesting."
-                task["agent"].next_thought = random_thought
-                self._thought_cache[task["cache_key"]] = random_thought
-                return
-                
-            # Create a synchronous request
-            response = self.openai_client.chat.completions.create(
-                model=settings.MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant simulating an autonomous agent."},
-                    {"role": "user", "content": task["prompt"]}
-                ],
-                max_tokens=40
-            )
-            thought = response.choices[0].message.content
-            
-            # Update agent and cache
-            task["agent"].next_thought = thought
-            self._thought_cache[task["cache_key"]] = thought
-            
-            # Limit cache size
-            if len(self._thought_cache) > 500:
-                # Remove random items to avoid unbounded growth
-                keys_to_remove = random.sample(list(self._thought_cache.keys()), 100)
-                for key in keys_to_remove:
-                    self._thought_cache.pop(key, None)
-        
-        except Exception as e:
-            logger.error(f"Error in agent thinking for {task['agent'].name}: {e}")
-            task["agent"].next_thought = "I'm not sure where to go next."
-            
-                
-    def process_thinking_batch(self) -> None:
-        """Process all pending thinking requests in a single batch (synchronous version)."""
-        try:
-            # Get the current batch of agents
-            current_batch = self._pending_agents.copy()
-            self._pending_agents = []
-            
-            if not current_batch:
-                return
-                
-            logger.info(f"Processing thinking batch for {len(current_batch)} agents (sync)")
-            
-            # Process each agent
-            for agent, all_agents in current_batch:
-                # For synchronous version, just use random thoughts or cached thoughts
-                # Calculate nearby agents for context
-                nearby_agents = []
-                other_agents = [a for a in all_agents if a.id != agent.id]
-                
-                # Calculate distances once
-                agent_distances = [(a, ((agent.x - a.x)**2 + (agent.y - a.y)**2)**0.5) 
-                                for a in other_agents]
-                
-                # Sort by distance and take closest 2
-                agent_distances.sort(key=lambda x: x[1])
-                closest_agents = agent_distances[:2]
-                
-                for nearby_agent, distance in closest_agents:
-                    if distance < 100:
-                        nearby_agents.append({
-                            "name": nearby_agent.name,
-                            "distance": distance,
-                            "personality": nearby_agent.personality
-                        })
-                
-                # Check cache first
-                cache_key = self._generate_cache_key(agent, nearby_agents)
-                if cache_key in self._thought_cache:
-                    agent.next_thought = self._thought_cache[cache_key]
-                    continue
-                
-                # If not in cache, generate simple thought
-                directions = ["north", "south", "east", "west", "stay"]
-                personality_based_reasons = {
-                    "Curious and explorative": ["looks interesting", "might find something new", "haven't been there yet"],
-                    "Analytical and cautious": ["seems safer", "better vantage point", "logical choice"],
-                    "Social and friendly": ["might meet someone", "where others are gathering", "crowded area"],
-                    "Independent and resourceful": ["good resources there", "strategic location", "useful position"],
-                    "Creative and imaginative": ["feels right", "inspiring direction", "curious what's over there"]
-                }
-                
-                reason = random.choice(personality_based_reasons.get(agent.personality, ["seems interesting"]))
+                # Generate simple directional thought
+                directions = ["north", "south", "east", "west"]
                 direction = random.choice(directions)
                 
-                thought = f"I think I'll move {direction} because it {reason}."
-                agent.next_thought = thought
+                thoughts = [
+                    f"I think I'll explore {direction} for a while.",
+                    f"Let me try going {direction} to see what happens.",
+                    f"Moving {direction} feels right for my goals."
+                ]
                 
-                # Cache the thought
-                self._thought_cache[cache_key] = thought
+                agent.next_thought = random.choice(thoughts)
                 
         except Exception as e:
-            logger.error(f"Error in thinking batch process (sync): {e}")
+            logger.error(f"Error in thinking batch process: {e}")
     
     def add_pending_agents(self, agents: List[Tuple[Agent, List[Agent]]]) -> None:
         """Add pending agents from external sources."""

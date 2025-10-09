@@ -238,55 +238,6 @@ async def broadcast_conversation_update(app: FastAPI):
             connected_clients.remove(client)
             logger.info(f"Removed disconnected client. Remaining clients: {len(connected_clients)}")
 
-# Also make sure the run_simulation function properly broadcasts conversations after processing:
-
-    async def run_simulation(app: FastAPI):
-        """Run the simulation loop in the background."""
-        app.state.simulation_running = False
-        app.state.simulation_speed = settings.MOVE_INTERVAL
-        
-        while True:
-            try:
-                if app.state.simulation_running:
-                    # Update agent positions
-                    app.state.agent_service.update_agents()
-                    
-                    # Process agent conversations
-                    conversations = app.state.agent_service.get_conversation_queue()
-                    if conversations:
-                        logger.info(f"Processing {len(conversations)} conversations")
-                        app.state.conversation_service.add_pending_conversations(conversations)
-                        
-                        # Process conversations using available method (async or sync)
-                        try:
-                            await app.state.conversation_service.process_conversation_batch_async()
-                        except Exception as e:
-                            logger.error(f"Error in async conversation processing: {e}")
-                            app.state.conversation_service.process_conversation_batch()
-                        
-                        # Explicitly broadcast conversations after processing
-                        await broadcast_conversation_update(app)
-                    
-                    # Generate thoughts for agents that need them
-                    thinking_agents = app.state.agent_service.get_agent_for_thinking()
-                    if thinking_agents:
-                        app.state.thinking_service.add_pending_agents(thinking_agents)
-                        # Process thinking using available method (async or sync)
-                        try:
-                            await app.state.thinking_service.process_thinking_batch_async()
-                        except Exception as e:
-                            logger.error(f"Error in async thinking: {e}")
-                            app.state.thinking_service.process_thinking_batch()
-                    
-                    # Broadcast agent updates
-                    await broadcast_agent_update(app)
-                
-                # Sleep based on simulation speed
-                await asyncio.sleep(app.state.simulation_speed / 1000)  # Convert ms to seconds
-            except Exception as e:
-                logger.error(f"Error in simulation loop: {e}")
-                await asyncio.sleep(1)  # Sleep on error to prevent CPU spinning
-
 
 
 async def run_simulation(app: FastAPI):
@@ -297,8 +248,16 @@ async def run_simulation(app: FastAPI):
     while True:
         try:
             if app.state.simulation_running:
-                # Update agent positions
-                app.state.agent_service.update_agents()
+                logger.info("Simulation running - updating agents")
+                # Update agent positions using parallel threads
+                try:
+                    app.state.agent_service.update_agents_parallel()
+                    logger.info("Parallel agent update completed successfully")
+                except Exception as e:
+                    logger.error(f"Error in parallel agent update: {e}")
+                    # Fallback to synchronous update
+                    app.state.agent_service.update_agents()
+                    logger.info("Fallback to synchronous agent update completed")
                 
                 # Process agent conversations
                 conversations = app.state.agent_service.get_conversation_queue()
@@ -329,8 +288,9 @@ async def run_simulation(app: FastAPI):
                 # Broadcast agent updates
                 await broadcast_agent_update(app)
             
-            # Sleep based on simulation speed
-            await asyncio.sleep(app.state.simulation_speed / 1000)  # Convert ms to seconds
+            # Use a faster base simulation speed for smoother movement
+            base_speed = max(50, app.state.simulation_speed // 4)  # At least 50ms, or 1/4 of set speed
+            await asyncio.sleep(base_speed / 1000)  # Convert ms to seconds
         except Exception as e:
             logger.error(f"Error in simulation loop: {e}")
             await asyncio.sleep(1)  # Sleep on error to prevent CPU spinning

@@ -15,25 +15,34 @@ class Settings(BaseSettings):
     
     # World settings
     WORLD_SIZE: int = 500  # size of the world in pixels
-    NUM_AGENTS: int = 10   # initial number of agents in the world
+    NUM_AGENTS: int = 3    # reduced from 10 to 3 for better performance with Ollama
     MAX_MEMORY: int = 10   # max number of memories each agent can have
     MAX_CONVERSATIONS: int = 10  # max number of conversations to keep
     
     # Agent control parameters
     INTERACTION_RADIUS: int = 30  # radius for agent interactions
-    THINK_CHANCE: float = 0.01    # chance of thinking each move
-    THINK_COOL_DOWN: int = 10     # number of moves before thinking again
+    THINK_CHANCE: float = 0.005   # chance of thinking each move (reduced for better performance)
+    THINK_COOL_DOWN: int = 20     # number of moves before thinking again (increased cooldown)
     
     # Animation settings
-    MOVE_INTERVAL: int = 500  # milliseconds between moves
+    MOVE_INTERVAL: int = 100  # milliseconds between moves (much faster for better UX)
     
     # Agent colors (comma-separated list)
     AGENT_COLORS: str = "blue,red,green,orange,purple,cyan,magenta,yellow,teal,pink"
     
-    # AI Model settings
-    MODEL: str = "llama3.2:1b"  # model for AI generation
-    OPENAI_BASE_URL: str = "http://ollama:11434/v1"
-    OPENAI_API_KEY: str ="ollama"
+    # AI Model settings - using fastest, lightest models
+    MODEL: str = "llama3.2:1b"  # Light model for fast responses (1.3GB, optimal balance)
+    FALLBACK_MODEL: str = "llama3.2:1b"  # Same model for consistency
+    
+    # Multi-LLM service configuration for parallel processing
+    OLLAMA_SERVICES: dict = {
+        "agent_0": {"base_url": "http://ollama:11434/v1", "model": "llama3.2:1b"},
+        "agent_1": {"base_url": "http://ollama2:11435/v1", "model": "llama3.2:1b"}, 
+        "agent_2": {"base_url": "http://ollama3:11436/v1", "model": "llama3.2:1b"}
+    }
+    
+    OPENAI_BASE_URL: str = "http://ollama:11434/v1"  # Default fallback
+    OPENAI_API_KEY: str = "ollama"
 
     # Terrain features (for visualization)
     TERRAIN_FEATURES: dict = {

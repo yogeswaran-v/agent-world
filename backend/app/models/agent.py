@@ -192,6 +192,7 @@ class Agent:
         # Calculate random step size (for more natural movement)
         step_size = random.randint(5, 15)
         
+        # Try the preferred direction first
         if direction == 'north' and curr_y > min_y:
             return (curr_x, max(curr_y - step_size, min_y))
         elif direction == 'south' and curr_y < max_y:
@@ -201,12 +202,44 @@ class Agent:
         elif direction == 'west' and curr_x > min_x:
             return (max(curr_x - step_size, min_x), curr_y)
         else:
-            # Stay in place with small random movement for natural look
-            jitter = random.randint(-3, 3)
-            return (
-                max(min_x, min(curr_x + jitter, max_x)),
-                max(min_y, min(curr_y + jitter, max_y))
-            )
+            # If preferred direction is blocked, find alternative movement
+            # List all possible directions and their validity
+            possible_moves = []
+            
+            # Check north
+            if curr_y > min_y + step_size:
+                possible_moves.append(('north', curr_x, curr_y - step_size))
+            
+            # Check south  
+            if curr_y < max_y - step_size:
+                possible_moves.append(('south', curr_x, curr_y + step_size))
+            
+            # Check east
+            if curr_x < max_x - step_size:
+                possible_moves.append(('east', curr_x + step_size, curr_y))
+            
+            # Check west
+            if curr_x > min_x + step_size:
+                possible_moves.append(('west', curr_x - step_size, curr_y))
+            
+            # If we have possible moves, choose one randomly
+            if possible_moves:
+                _, new_x, new_y = random.choice(possible_moves)
+                return (new_x, new_y)
+            else:
+                # If really stuck (rare case), move to center area
+                center_x = (min_x + max_x) // 2
+                center_y = (min_y + max_y) // 2
+                
+                # Move towards center with some randomness
+                target_x = curr_x + (random.randint(-10, 10) if abs(curr_x - center_x) < 20 else (10 if center_x > curr_x else -10))
+                target_y = curr_y + (random.randint(-10, 10) if abs(curr_y - center_y) < 20 else (10 if center_y > curr_y else -10))
+                
+                # Ensure within bounds
+                target_x = max(min_x, min(target_x, max_x))
+                target_y = max(min_y, min(target_y, max_y))
+                
+                return (target_x, target_y)
     
     def _check_for_interactions(self, agents: List['Agent'], conversation_queue: List[Tuple['Agent', 'Agent']]) -> None:
         """Check for and initiate interactions with nearby agents."""

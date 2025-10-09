@@ -67,8 +67,87 @@ class AgentService:
     
     def update_agents(self) -> None:
         """Update all agents (move, think, interact)."""
+        # Process agents sequentially but efficiently
         for agent in self.agents:
             agent.move(self.agents, self.world_size, self.conversation_queue)
+    
+    def update_agents_parallel(self) -> None:
+        """Update all agents using parallel threads for maximum performance and independence."""
+        import threading
+        import time
+        import random
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        logger.debug(f"Starting parallel update for {len(self.agents)} agents")
+        
+        def update_single_agent(agent_data):
+            """Update a single agent in its own thread."""
+            agent, agent_index, stagger_delay = agent_data
+            
+            try:
+                # Add staggered delay to prevent perfect synchronization
+                if stagger_delay > 0:
+                    time.sleep(stagger_delay)
+                
+                # Add small random delay for each agent to create natural movement patterns
+                random_delay = random.uniform(0.01, 0.05)  # 10-50ms random delay
+                time.sleep(random_delay)
+                
+                # Create a thread-safe copy of agent list for collision detection
+                agents_copy = self.agents.copy()
+                
+                # Update agent position - each agent moves independently
+                agent.move(agents_copy, self.world_size, self.conversation_queue)
+                
+                logger.debug(f"Thread {agent_index}: Updated agent {agent.name} to position ({agent.x}, {agent.y})")
+                return f"Agent {agent.name} updated successfully"
+                
+            except Exception as e:
+                error_msg = f"Error updating agent {agent.name} in thread {agent_index}: {e}"
+                logger.error(error_msg)
+                return error_msg
+        
+        # Prepare agent data with staggered delays
+        agent_data_list = []
+        for i, agent in enumerate(self.agents):
+            # Stagger agent updates with increasing delays (0ms, 20ms, 40ms, etc.)
+            stagger_delay = i * 0.02  # 20ms delay between each agent start
+            agent_data_list.append((agent, i, stagger_delay))
+        
+        # Use ThreadPoolExecutor for efficient parallel processing
+        max_workers = min(len(self.agents), 10)  # Limit concurrent threads to prevent resource exhaustion
+        
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="AgentWorker") as executor:
+            # Submit all agent update tasks
+            future_to_agent = {
+                executor.submit(update_single_agent, agent_data): agent_data[0].name 
+                for agent_data in agent_data_list
+            }
+            
+            # Collect results as they complete
+            completed_count = 0
+            error_count = 0
+            
+            for future in as_completed(future_to_agent, timeout=5.0):  # 5 second timeout
+                agent_name = future_to_agent[future]
+                try:
+                    result = future.result()
+                    if "Error" in result:
+                        error_count += 1
+                        logger.warning(f"Agent {agent_name}: {result}")
+                    else:
+                        completed_count += 1
+                        
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Thread exception for agent {agent_name}: {e}")
+        
+        # Log summary
+        total_agents = len(self.agents)
+        logger.info(f"Parallel update completed: {completed_count}/{total_agents} agents updated successfully, {error_count} errors")
+        
+        if error_count > total_agents // 2:  # If more than half failed
+            logger.warning(f"High error rate in parallel update ({error_count}/{total_agents}), consider fallback to synchronous mode")
     
     def get_agent_for_thinking(self) -> List[Tuple[Agent, List[Agent]]]:
         """Get agents that need to think."""

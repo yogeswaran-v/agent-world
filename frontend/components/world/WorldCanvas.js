@@ -1,571 +1,607 @@
-import { useRef, useState, useEffect } from 'react';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { useThrottledCallback } from 'use-debounce';
+import { useRef, useEffect, useCallback, useState } from 'react';
 
-// Helper function to convert color names to hex
-const colorNameToHex = {
-  red: 0xff0000,
-  green: 0x00ff00,
-  blue: 0x0000ff,
-  yellow: 0xffff00,
-  cyan: 0x00ffff,
-  magenta: 0xff00ff,
-  purple: 0x800080,
-  orange: 0xffa500,
-  pink: 0xffc0cb,
-  teal: 0x008080,
+// Helper function to convert color names to CSS colors
+const colorNameToCSS = {
+  red: '#ff4444',
+  green: '#44ff44',
+  blue: '#4444ff',
+  yellow: '#ffff44',
+  cyan: '#44ffff',
+  magenta: '#ff44ff',
+  purple: '#aa44aa',
+  orange: '#ffaa44',
+  pink: '#ffaacc',
+  teal: '#44aaaa',
 };
 
-// Create a 3D character model
-const createCharacterModel = (colorName, name) => {
-  const characterGroup = new THREE.Group();
-  const color = colorNameToHex[colorName] || 0xffffff;
+// Isometric projection helper
+const isoProject = (x, y, z = 0) => {
+  const scale = 1.2; // Increased scale for better viewport usage
+  const isoX = (x - y) * Math.cos(Math.PI / 6) * scale;
+  const isoY = (x + y) * Math.sin(Math.PI / 6) * scale - z * scale;
+  return { x: isoX, y: isoY };
+};
+
+// World bounds
+const WORLD_BOUNDS = {
+  minX: 50,
+  maxX: 450,
+  minY: 50,
+  maxY: 450
+};
+
+// Draw terrain features
+const drawTerrain = (ctx, time, canvasWidth, canvasHeight, cameraOffset = { x: 0, y: 0 }, zoom = 1) => {
+  // Better centering - offset the world to use more space
+  const centerX = canvasWidth / 2 + cameraOffset.x;
+  const centerY = canvasHeight / 2 - 20 + cameraOffset.y;  // Draw lake
+  const lakeCenter = isoProject(150, 150);
+  const lakeX = (lakeCenter.x * zoom) + centerX;
+  const lakeY = (lakeCenter.y * zoom) + centerY;
   
-  // Body (cylinder)
-  const bodyGeometry = new THREE.CylinderGeometry(3, 4, 12, 8);
-  const bodyMaterial = new THREE.MeshStandardMaterial({ 
-    color: color,
-    roughness: 0.6,
-    metalness: 0.1,
-  });
-  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-  body.position.y = 8;
-  body.castShadow = true;
-  characterGroup.add(body);
+  ctx.save();
+  ctx.translate(lakeX, lakeY);
   
-  // Head (sphere)
-  const headGeometry = new THREE.SphereGeometry(2.5, 16, 16);
-  const headMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0xfdbcb4, // Skin tone
-    roughness: 0.7,
-    metalness: 0.0,
+  // Animated water
+  const ripple = Math.sin(time * 0.002) * 2;
+  ctx.fillStyle = '#0077be';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, (40 + ripple) * zoom, (25 + ripple * 0.5) * zoom, 0, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Water shine
+  ctx.fillStyle = 'rgba(135, 206, 235, 0.6)';
+  ctx.beginPath();
+  ctx.ellipse(-10 * zoom, -8 * zoom, (15 + ripple * 0.5) * zoom, (8 + ripple * 0.3) * zoom, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  
+  // Draw mountains
+  const mountains = [
+    { x: 320, y: 240, height: 35 },
+    { x: 350, y: 280, height: 40 },
+    { x: 380, y: 250, height: 32 }
+  ];
+  
+  mountains.forEach(mountain => {
+    const pos = isoProject(mountain.x, mountain.y);
+    const screenX = (pos.x * zoom) + centerX;
+    const screenY = (pos.y * zoom) + centerY;
+    
+    // Mountain body
+    ctx.fillStyle = '#8B7355';
+    ctx.beginPath();
+    ctx.moveTo(screenX, screenY - (mountain.height * zoom));
+    ctx.lineTo(screenX - (20 * zoom), screenY);
+    ctx.lineTo(screenX + (20 * zoom), screenY);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Snow cap
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(screenX, screenY - (mountain.height * zoom));
+    ctx.lineTo(screenX - (8 * zoom), screenY - (mountain.height * 0.7 * zoom));
+    ctx.lineTo(screenX + (8 * zoom), screenY - (mountain.height * 0.7 * zoom));
+    ctx.closePath();
+    ctx.fill();
   });
-  const head = new THREE.Mesh(headGeometry, headMaterial);
-  head.position.y = 16;
-  head.castShadow = true;
-  characterGroup.add(head);
+  
+  // Draw trees within world bounds
+  const treePositions = [
+    [180, 160], [200, 180], [220, 150], [190, 200], [210, 220],
+    [240, 170], [260, 190], [280, 160], [300, 180], [320, 150]
+  ];
+  
+  treePositions.forEach(([x, y], index) => {
+    // Only draw trees within bounds
+    if (x >= WORLD_BOUNDS.minX && x <= WORLD_BOUNDS.maxX && 
+        y >= WORLD_BOUNDS.minY && y <= WORLD_BOUNDS.maxY) {
+      const pos = isoProject(x, y);
+      const screenX = (pos.x * zoom) + centerX;
+      const screenY = (pos.y * zoom) + centerY;
+      const sway = Math.sin(time * 0.001 + index) * (2 * zoom);
+      
+      // Tree trunk
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(screenX - (2 * zoom), screenY - (5 * zoom), 4 * zoom, 15 * zoom);
+      
+      // Tree foliage (multiple layers for depth)
+      const foliageColors = ['#228B22', '#32CD32', '#006400'];
+      foliageColors.forEach((color, i) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(screenX + sway, screenY - (15 + i * 3) * zoom, (12 - i * 2) * zoom, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+  });
+};
+
+// Draw a beautiful 2.5D character
+const drawCharacter = (ctx, agent, isSelected, time, canvasWidth, canvasHeight, cameraOffset = { x: 0, y: 0 }, zoom = 1) => {
+  const { x, y, color, name, move_progress = 0 } = agent;
+  // Better centering - offset the world to use more space
+  const centerX = canvasWidth / 2 + cameraOffset.x;
+  const centerY = canvasHeight / 2 - 20 + cameraOffset.y;
+  
+  // Smooth interpolation for movement
+  const targetX = agent.target_x || x;
+  const targetY = agent.target_y || y;
+  const currentX = x + (targetX - x) * move_progress;
+  const currentY = y + (targetY - y) * move_progress;
+  
+  const projected = isoProject(currentX, currentY, 0);
+  const screenX = (projected.x * zoom) + centerX;
+  const screenY = (projected.y * zoom) + centerY;
+  
+  // Walking animation
+  const isMoving = move_progress > 0 && move_progress < 1;
+  const walkOffset = isMoving ? time * 0.01 : 0;
+  const walkBob = isMoving ? Math.sin(walkOffset) * (1.5 * zoom) : 0;
+  const charY = screenY - walkBob;
+  
+  // Movement direction indicator
+  if (isMoving) {
+    const dx = targetX - x;
+    const dy = targetY - y;
+    const angle = Math.atan2(dy, dx);
+    
+    ctx.save();
+    ctx.translate(screenX, charY - 25);
+    ctx.rotate(angle);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(0, -3);
+    ctx.lineTo(0, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  
+  ctx.save();
+  
+  // Selection highlight
+  if (isSelected) {
+    ctx.strokeStyle = '#ffff00';
+    ctx.lineWidth = 3 * zoom;
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 25 * zoom, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Pulsing effect
+    ctx.strokeStyle = `rgba(255, 255, 0, ${0.3 + Math.sin(time * 0.005) * 0.2})`;
+    ctx.lineWidth = 1 * zoom;
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, 30 * zoom, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  // Character shadow
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  ctx.beginPath();
+  ctx.ellipse(screenX, screenY + (12 * zoom), 10 * zoom, 4 * zoom, 0, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Character body
+  const bodyColor = colorNameToCSS[color] || '#888888';
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(screenX - (6 * zoom), charY - (8 * zoom), 12 * zoom, 16 * zoom);
+  
+  // Character head
+  ctx.fillStyle = '#fdbcb4';
+  ctx.beginPath();
+  ctx.arc(screenX, charY - (15 * zoom), 7 * zoom, 0, Math.PI * 2);
+  ctx.fill();
   
   // Eyes
-  const eyeGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-  const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.arc(screenX - (2 * zoom), charY - (16 * zoom), 1 * zoom, 0, Math.PI * 2);
+  ctx.arc(screenX + (2 * zoom), charY - (16 * zoom), 1 * zoom, 0, Math.PI * 2);
+  ctx.fill();
   
-  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-  leftEye.position.set(-0.8, 16.5, 2);
-  characterGroup.add(leftEye);
+  // Hair/hat
+  ctx.fillStyle = bodyColor;
+  ctx.beginPath();
+  ctx.arc(screenX, charY - (18 * zoom), 8 * zoom, Math.PI, Math.PI * 2);
+  ctx.fill();
   
-  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-  rightEye.position.set(0.8, 16.5, 2);
-  characterGroup.add(rightEye);
+  // Arms (with walking animation)
+  ctx.fillStyle = '#fdbcb4';
+  const armSwing = isMoving ? Math.sin(walkOffset) * 0.3 : 0;
   
-  // Hat/Hair
-  const hatGeometry = new THREE.ConeGeometry(3, 4, 8);
-  const hatMaterial = new THREE.MeshStandardMaterial({ 
-    color: new THREE.Color(color).multiplyScalar(0.7), // Darker version of body color
-    roughness: 0.8,
-    metalness: 0.0,
-  });
-  const hat = new THREE.Mesh(hatGeometry, hatMaterial);
-  hat.position.y = 19;
-  hat.castShadow = true;
-  characterGroup.add(hat);
+  // Left arm
+  ctx.save();
+  ctx.translate(screenX - 8, charY - 5);
+  ctx.rotate(armSwing);
+  ctx.fillRect(-1, -3, 2, 8);
+  ctx.restore();
   
-  // Arms
-  const armGeometry = new THREE.CylinderGeometry(0.8, 1, 8, 6);
-  const armMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0xfdbcb4,
-    roughness: 0.7,
-    metalness: 0.0,
-  });
+  // Right arm  
+  ctx.save();
+  ctx.translate(screenX + 8, charY - 5);
+  ctx.rotate(-armSwing);
+  ctx.fillRect(-1, -3, 2, 8);
+  ctx.restore();
   
-  const leftArm = new THREE.Mesh(armGeometry, armMaterial);
-  leftArm.position.set(-4.5, 10, 0);
-  leftArm.rotation.z = 0.3;
-  leftArm.castShadow = true;
-  characterGroup.add(leftArm);
+  // Legs (with walking animation)
+  const legSwing = isMoving ? Math.sin(walkOffset + Math.PI) * 0.2 : 0;
   
-  const rightArm = new THREE.Mesh(armGeometry, armMaterial);
-  rightArm.position.set(4.5, 10, 0);
-  rightArm.rotation.z = -0.3;
-  rightArm.castShadow = true;
-  characterGroup.add(rightArm);
+  // Left leg
+  ctx.fillStyle = '#4169e1';
+  ctx.save();
+  ctx.translate(screenX - 3, charY + 5);
+  ctx.rotate(legSwing);
+  ctx.fillRect(-1, -3, 2, 8);
+  ctx.restore();
   
-  // Legs
-  const legGeometry = new THREE.CylinderGeometry(1, 1.2, 6, 6);
-  const legMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x4169e1, // Blue pants
-    roughness: 0.8,
-    metalness: 0.0,
-  });
+  // Right leg
+  ctx.save();
+  ctx.translate(screenX + 3, charY + 5);
+  ctx.rotate(-legSwing);
+  ctx.fillRect(-1, -3, 2, 8);
+  ctx.restore();
   
-  const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
-  leftLeg.position.set(-1.5, 1, 0);
-  leftLeg.castShadow = true;
-  characterGroup.add(leftLeg);
+  // Activity indicators
+  const hasThought = agent.last_thought && agent.last_thought.trim().length > 0;
+  const hasMemories = agent.memory && agent.memory.length > 0;
   
-  const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
-  rightLeg.position.set(1.5, 1, 0);
-  rightLeg.castShadow = true;
-  characterGroup.add(rightLeg);
+  // Thinking indicator
+  if (hasThought) {
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.8)'; // Gold for thinking
+    ctx.beginPath();
+    ctx.arc(screenX + 12, charY - 20, 4, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Pulsing effect
+    ctx.strokeStyle = `rgba(255, 215, 0, ${0.4 + Math.sin(time * 0.008) * 0.3})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(screenX + 12, charY - 20, 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   
-  // Add walking animation properties
-  characterGroup.userData.walkingOffset = Math.random() * Math.PI * 2;
-  characterGroup.userData.originalY = 0;
+  // Memory indicator
+  if (hasMemories) {
+    ctx.fillStyle = 'rgba(135, 206, 235, 0.8)'; // Sky blue for memory
+    ctx.beginPath();
+    ctx.arc(screenX - 12, charY - 20, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Name label with beautiful styling
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+  ctx.font = 'bold 12px Arial';
+  const textWidth = ctx.measureText(name).width;
+  ctx.fillRect(screenX - textWidth/2 - 4, charY - 35, textWidth + 8, 16);
   
-  return characterGroup;
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.fillText(name, screenX, charY - 25);
+  
+  ctx.restore();
 };
 
 const WorldCanvas = ({ agents, selectedAgent, onAgentClick }) => {
-  const containerRef = useRef(null);
-  const rendererRef = useRef(null);
-  const sceneRef = useRef(null);
-  const cameraRef = useRef(null);
-  const controlsRef = useRef(null);
-  const agentMeshesRef = useRef({});
-  const frameIdRef = useRef(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-  
-  // Initialize Three.js scene
-  useEffect(() => {
-    if (!containerRef.current) return;
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+
+  // Handle mouse interactions for navigation and agent selection
+  const handleMouseDown = useCallback((event) => {
+    if (!canvasRef.current) return;
     
-    // Create scene with better atmosphere
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x87CEEB, 300, 800); // Atmospheric fog
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
     
-    // Create gradient sky background
-    const skyGeometry = new THREE.SphereGeometry(1000, 32, 32);
-    const skyMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        topColor: { value: new THREE.Color(0x0077be) },
-        bottomColor: { value: new THREE.Color(0x89cff0) },
-        offset: { value: 400 },
-        exponent: { value: 0.6 }
-      },
-      vertexShader: `
-        varying vec3 vWorldPosition;
-        void main() {
-          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-          vWorldPosition = worldPosition.xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 topColor;
-        uniform vec3 bottomColor;
-        uniform float offset;
-        uniform float exponent;
-        varying vec3 vWorldPosition;
-        void main() {
-          float h = normalize(vWorldPosition + offset).y;
-          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
-        }
-      `,
-      side: THREE.BackSide
+    setIsDragging(true);
+    setDragStart({ x: mouseX - cameraOffset.x, y: mouseY - cameraOffset.y });
+  }, [cameraOffset]);
+
+  const handleMouseMove = useCallback((event) => {
+    if (!canvasRef.current || !isDragging) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+    
+    setCameraOffset({
+      x: mouseX - dragStart.x,
+      y: mouseY - dragStart.y
     });
-    const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-    scene.add(sky);
-    
-    sceneRef.current = scene;
-    
-    // Create camera
-    const camera = new THREE.PerspectiveCamera(
-      75, 
-      containerRef.current.clientWidth / containerRef.current.clientHeight, 
-      0.1, 
-      1000
-    );
-    camera.position.set(250, 250, 350);
-    cameraRef.current = camera;
-    
-    // Create renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    containerRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
-    
-    // Add orbit controls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.screenSpacePanning = false;
-    controls.minDistance = 100;
-    controls.maxDistance = 500;
-    controls.maxPolarAngle = Math.PI / 2;
-    controlsRef.current = controls;
-    
-    // Create realistic ground with texture-like material
-    const groundGeometry = new THREE.PlaneGeometry(500, 500, 64, 64);
-    
-    // Add some noise to the ground vertices for natural terrain
-    const vertices = groundGeometry.attributes.position.array;
-    for (let i = 0; i < vertices.length; i += 3) {
-      vertices[i + 2] = Math.random() * 2 - 1; // Small height variations
+  }, [isDragging, dragStart]);
+
+  const handleMouseUp = useCallback((event) => {
+    if (!isDragging) {
+      // Handle agent selection on click (not drag)
+      if (!canvasRef.current || !agents) return;
+      
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+      const centerX = canvas.clientWidth / 2 + cameraOffset.x;
+      const centerY = canvas.clientHeight / 2 - 20 + cameraOffset.y;
+      
+      // Find clicked agent
+      const clickedAgent = agents.find(agent => {
+        const projected = isoProject(agent.x, agent.y);
+        const screenX = (projected.x * zoom) + centerX;
+        const screenY = (projected.y * zoom) + centerY;
+        
+        const distance = Math.sqrt(
+          (clickX - screenX) ** 2 + (clickY - screenY) ** 2
+        );
+        
+        return distance < (20 * zoom); // Click radius adjusted for zoom
+      });
+      
+      if (clickedAgent && onAgentClick) {
+        onAgentClick(clickedAgent.id);
+      }
     }
-    groundGeometry.attributes.position.needsUpdate = true;
-    groundGeometry.computeVertexNormals();
     
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x4a5d23, // Natural grass color
-      roughness: 0.9,
-      metalness: 0.0,
-    });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
+    setIsDragging(false);
+  }, [agents, onAgentClick, isDragging, cameraOffset, zoom]);
+
+  const handleWheel = useCallback((event) => {
+    event.preventDefault();
+    const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+    setZoom(prevZoom => Math.max(0.5, Math.min(3, prevZoom * zoomFactor)));
+  }, []);
+
+  // Animation and rendering loop
+  useEffect(() => {
+    if (!canvasRef.current) return;
     
-    // Add subtle grid for reference (less prominent)
-    const grid = new THREE.GridHelper(500, 25, 0x3a4a1a, 0x2a3a0a);
-    grid.position.y = 0.05;
-    grid.material.opacity = 0.3;
-    grid.material.transparent = true;
-    scene.add(grid);
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
     
-    // Enhanced lighting setup
-    const ambientLight = new THREE.AmbientLight(0x87CEEB, 0.4); // Soft blue ambient
-    scene.add(ambientLight);
+    // Set canvas size and enable high DPI
+    const setupCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const displayWidth = canvas.clientWidth;
+      const displayHeight = canvas.clientHeight;
+      
+      canvas.width = displayWidth * dpr;
+      canvas.height = displayHeight * dpr;
+      
+      ctx.scale(dpr, dpr);
+      canvas.style.width = displayWidth + 'px';
+      canvas.style.height = displayHeight + 'px';
+    };
     
-    // Main sun light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    directionalLight.position.set(200, 400, 200);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    directionalLight.shadow.camera.near = 1;
-    directionalLight.shadow.camera.far = 1000;
-    directionalLight.shadow.camera.left = -300;
-    directionalLight.shadow.camera.right = 300;
-    directionalLight.shadow.camera.top = 300;
-    directionalLight.shadow.camera.bottom = -300;
-    scene.add(directionalLight);
-    
-    // Add hemisphere light for more natural lighting
-    const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x4a5d23, 0.6);
-    scene.add(hemisphereLight);
-    
-    // Enable shadows in renderer
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    
-    // Add terrain features
-    createTerrain(scene);
+    setupCanvas();
     
     // Animation loop
     const animate = () => {
-      frameIdRef.current = requestAnimationFrame(animate);
+      animationRef.current = requestAnimationFrame(animate);
+      const time = Date.now();
       
-      if (controlsRef.current) {
-        controlsRef.current.update();
+      // Clear canvas with gradient background
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height / (window.devicePixelRatio || 1));
+      gradient.addColorStop(0, '#87CEEB');
+      gradient.addColorStop(1, '#98FB98');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw a subtle grid for spatial reference
+      const gridCenterX = (canvas.width / (window.devicePixelRatio || 1)) / 2 + cameraOffset.x;
+      const gridCenterY = (canvas.height / (window.devicePixelRatio || 1)) / 2 - 20 + cameraOffset.y;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      
+      // Draw isometric grid
+      for (let x = WORLD_BOUNDS.minX; x <= WORLD_BOUNDS.maxX; x += 50) {
+        for (let y = WORLD_BOUNDS.minY; y <= WORLD_BOUNDS.maxY; y += 50) {
+          const pos1 = isoProject(x, y);
+          const pos2 = isoProject(x + 50, y);
+          const pos3 = isoProject(x, y + 50);
+          
+          ctx.beginPath();
+          ctx.moveTo((pos1.x * zoom) + gridCenterX, (pos1.y * zoom) + gridCenterY);
+          ctx.lineTo((pos2.x * zoom) + gridCenterX, (pos2.y * zoom) + gridCenterY);
+          ctx.moveTo((pos1.x * zoom) + gridCenterX, (pos1.y * zoom) + gridCenterY);
+          ctx.lineTo((pos3.x * zoom) + gridCenterX, (pos3.y * zoom) + gridCenterY);
+          ctx.stroke();
+        }
+      }
+
+      // Draw terrain
+      drawTerrain(ctx, time, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1), cameraOffset, zoom);
+      
+      // Draw agents
+      if (agents) {
+        // Sort agents by y position for proper depth
+        const sortedAgents = [...agents].sort((a, b) => (a.y + a.x) - (b.y + b.x));
+        
+        sortedAgents.forEach(agent => {
+          const isSelected = agent.id === selectedAgent;
+          drawCharacter(ctx, agent, isSelected, time, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1), cameraOffset, zoom);
+        });
       }
       
-      if (rendererRef.current && sceneRef.current && cameraRef.current) {
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      // Draw world bounds
+      const centerX = (canvas.width / (window.devicePixelRatio || 1)) / 2 + cameraOffset.x;
+      const centerY = (canvas.height / (window.devicePixelRatio || 1)) / 2 - 20 + cameraOffset.y;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 2 * zoom;
+      const bounds = [
+        isoProject(WORLD_BOUNDS.minX, WORLD_BOUNDS.minY),
+        isoProject(WORLD_BOUNDS.maxX, WORLD_BOUNDS.minY),
+        isoProject(WORLD_BOUNDS.maxX, WORLD_BOUNDS.maxY),
+        isoProject(WORLD_BOUNDS.minX, WORLD_BOUNDS.maxY)
+      ];
+      
+      ctx.beginPath();
+      bounds.forEach((point, i) => {
+        const method = i === 0 ? 'moveTo' : 'lineTo';
+        ctx[method]((point.x * zoom) + centerX, (point.y * zoom) + centerY);
+      });
+      ctx.closePath();
+      ctx.stroke();
+      
+      // Draw simulation stats
+      if (agents) {
+        const canvasWidth = canvas.width / (window.devicePixelRatio || 1);
+        const activeAgents = agents.filter(a => a.last_thought && a.last_thought.trim().length > 0).length;
+        const agentsWithMemory = agents.filter(a => a.memory && a.memory.length > 0).length;
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(10, 10, 200, 50);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Agents: ${agents.length}`, 15, 25);
+        ctx.fillText(`Thinking: ${activeAgents}`, 15, 40);
+        ctx.fillText(`With Memory: ${agentsWithMemory}`, 15, 55);
       }
     };
     
     animate();
-    setIsInitialized(true);
-    
-    // Handle window resize
-    const handleResize = () => {
-      if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
-      
-      const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight;
-      
-      cameraRef.current.aspect = width / height;
-      cameraRef.current.updateProjectionMatrix();
-      
-      rendererRef.current.setSize(width, height);
-    };
-    
-    window.addEventListener('resize', handleResize);
     
     // Cleanup
     return () => {
-      window.removeEventListener('resize', handleResize);
-      
-      if (frameIdRef.current) {
-        cancelAnimationFrame(frameIdRef.current);
-      }
-      
-      if (rendererRef.current && containerRef.current) {
-        containerRef.current.removeChild(rendererRef.current.domElement);
-      }
-      
-      // Dispose of all meshes and geometries
-      if (sceneRef.current) {
-        sceneRef.current.traverse((object) => {
-          if (object.geometry) object.geometry.dispose();
-          if (object.material) {
-            if (Array.isArray(object.material)) {
-              object.material.forEach(material => material.dispose());
-            } else {
-              object.material.dispose();
-            }
-          }
-        });
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
       }
     };
-  }, []);
-  
-  // Handle agent updates
+  }, [agents, selectedAgent, cameraOffset, zoom]);
+
+  // Handle window resize
   useEffect(() => {
-    if (!isInitialized || !sceneRef.current) return;
-    
-    // Update existing agents and add new ones
-    agents.forEach(agent => {
-      updateOrCreateAgent(agent);
-    });
-    
-    // Remove agents that no longer exist
-    Object.keys(agentMeshesRef.current).forEach(id => {
-      if (!agents.some(agent => agent.id.toString() === id)) {
-        removeAgent(parseInt(id));
+    const handleResize = () => {
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        const dpr = window.devicePixelRatio || 1;
+        const displayWidth = canvas.clientWidth;
+        const displayHeight = canvas.clientHeight;
+        
+        canvas.width = displayWidth * dpr;
+        canvas.height = displayHeight * dpr;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
       }
-    });
-  }, [agents, isInitialized, selectedAgent]);
-  
-  // Create or update agent in the scene
-  const updateOrCreateAgent = (agent) => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    
-    const id = agent.id.toString();
-    const isSelected = agent.id === selectedAgent;
-    
-    // If agent already exists, update its position
-    if (agentMeshesRef.current[id]) {
-      const { mesh, label, targetPosition } = agentMeshesRef.current[id];
-      
-      // Update target position for smooth movement
-      targetPosition.x = agent.target_x;
-      targetPosition.z = agent.target_y; // y-coordinate in data becomes z in Three.js
-      
-      // Calculate interpolation based on move progress
-      const progress = agent.move_progress;
-      const startX = agent.x - (agent.target_x - agent.x) * (1 - progress);
-      const startZ = agent.y - (agent.target_y - agent.y) * (1 - progress);
-      
-      mesh.position.x = startX + (targetPosition.x - startX) * progress;
-      mesh.position.z = startZ + (targetPosition.z - startZ) * progress;
-      
-      // Update label position
-      label.position.x = mesh.position.x;
-      label.position.z = mesh.position.z;
-      
-      // Update selection status
-      updateAgentSelection(id, isSelected);
-      
-      return;
-    }
-    
-    // Create 3D character model instead of simple sphere
-    const characterGroup = createCharacterModel(agent.color, agent.name);
-    characterGroup.position.set(agent.x, 0, agent.y);
-    characterGroup.castShadow = true;
-    characterGroup.userData = { id: agent.id, type: 'agent' };
-    
-    const mesh = characterGroup; // Use the character group as the mesh
-    
-    // Create text label for agent name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 128;
-    canvas.height = 64;
-    
-    context.fillStyle = '#ffffff';
-    context.font = '24px Arial';
-    context.textAlign = 'center';
-    context.fillText(agent.name, 64, 24);
-    
-    const texture = new THREE.CanvasTexture(canvas);
-    const labelMaterial = new THREE.SpriteMaterial({ map: texture });
-    const label = new THREE.Sprite(labelMaterial);
-    label.position.set(agent.x, 15, agent.y);
-    label.scale.set(30, 15, 1);
-    
-    // Add to scene
-    scene.add(mesh);
-    scene.add(label);
-    
-    // Store in ref
-    agentMeshesRef.current[id] = { 
-      mesh, 
-      label,
-      targetPosition: new THREE.Vector3(agent.target_x, 5, agent.target_y)
     };
     
-    // Update selection status
-    updateAgentSelection(id, isSelected);
-  };
-  
-  // Remove agent from scene
-  const removeAgent = (agentId) => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    
-    const id = agentId.toString();
-    if (agentMeshesRef.current[id]) {
-      const { mesh, label } = agentMeshesRef.current[id];
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const moveSpeed = 20;
       
-      scene.remove(mesh);
-      scene.remove(label);
-      
-      // Dispose of geometries and materials
-      if (mesh.geometry) mesh.geometry.dispose();
-      if (mesh.material) mesh.material.dispose();
-      if (label.material.map) label.material.map.dispose();
-      if (label.material) label.material.dispose();
-      
-      delete agentMeshesRef.current[id];
-    }
-  };
-  
-  // Update agent selection
-  const updateAgentSelection = (agentId, isSelected) => {
-    const agentObj = agentMeshesRef.current[agentId];
-    if (!agentObj) return;
-    
-    const { mesh } = agentObj;
-    
-    // Create or update selection indicator
-    if (isSelected) {
-      if (!agentObj.selectionRing) {
-        const geometry = new THREE.TorusGeometry(7, 0.5, 16, 32);
-        const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-        const ring = new THREE.Mesh(geometry, material);
-        ring.rotation.x = Math.PI / 2; // Rotate to be horizontal
-        ring.position.y = 1; // Slightly above ground
-        
-        mesh.add(ring);
-        agentObj.selectionRing = ring;
+      switch (event.key) {
+        case 'ArrowUp':
+        case 'w':
+        case 'W':
+          setCameraOffset(prev => ({ ...prev, y: prev.y + moveSpeed }));
+          event.preventDefault();
+          break;
+        case 'ArrowDown':
+        case 's':
+        case 'S':
+          setCameraOffset(prev => ({ ...prev, y: prev.y - moveSpeed }));
+          event.preventDefault();
+          break;
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+          setCameraOffset(prev => ({ ...prev, x: prev.x + moveSpeed }));
+          event.preventDefault();
+          break;
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+          setCameraOffset(prev => ({ ...prev, x: prev.x - moveSpeed }));
+          event.preventDefault();
+          break;
+        case '=':
+        case '+':
+          setZoom(prev => Math.min(3, prev * 1.1));
+          event.preventDefault();
+          break;
+        case '-':
+        case '_':
+          setZoom(prev => Math.max(0.5, prev * 0.9));
+          event.preventDefault();
+          break;
+        case '0':
+          setCameraOffset({ x: 0, y: 0 });
+          setZoom(1);
+          event.preventDefault();
+          break;
       }
-    } else if (agentObj.selectionRing) {
-      mesh.remove(agentObj.selectionRing);
-      agentObj.selectionRing.geometry.dispose();
-      agentObj.selectionRing.material.dispose();
-      agentObj.selectionRing = null;
-    }
-  };
-  
-  // Handle mouse interaction
-  const handleClick = useThrottledCallback((event) => {
-    if (!isInitialized || !sceneRef.current || !cameraRef.current || !rendererRef.current) return;
-    
-    // Calculate mouse position in normalized device coordinates
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
-    // Raycaster for picking
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera({ x, y }, cameraRef.current);
-    
-    // Get all agent meshes
-    const agentMeshes = Object.values(agentMeshesRef.current).map(a => a.mesh);
-    
-    // Check for intersections
-    const intersects = raycaster.intersectObjects(agentMeshes);
-    
-    if (intersects.length > 0) {
-      const clickedAgentId = intersects[0].object.userData.id;
-      onAgentClick(clickedAgentId);
-    }
-  }, 200); // Throttle to prevent double-clicks
-  
-  // Create terrain features
-  const createTerrain = (scene) => {
-    // Create lake (centered in upper-left quadrant)
-    const lakeShape = new THREE.Shape();
-    lakeShape.moveTo(120, 120);
-    lakeShape.lineTo(180, 130);
-    lakeShape.lineTo(200, 180);
-    lakeShape.lineTo(140, 190);
-    lakeShape.lineTo(100, 160);
-    lakeShape.lineTo(120, 120);
-    
-    const lakeGeometry = new THREE.ShapeGeometry(lakeShape);
-    const lakeMaterial = new THREE.MeshPhongMaterial({ 
-      color: 0x0077be,
-      transparent: true,
-      opacity: 0.7,
-      shininess: 100
-    });
-    
-    const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
-    lake.rotation.x = -Math.PI / 2;
-    lake.position.y = 0.2; // Slightly above ground
-    scene.add(lake);
-    
-    // Create mountains (clustered in center-right area)
-    const mountainGeometry = new THREE.ConeGeometry(15, 30, 4);
-    const mountainMaterial = new THREE.MeshStandardMaterial({
-      color: 0x777777,
-      roughness: 0.9
-    });
-    
-    const mountain1 = new THREE.Mesh(mountainGeometry, mountainMaterial);
-    mountain1.position.set(320, 15, 240);
-    scene.add(mountain1);
-    
-    const mountain2 = new THREE.Mesh(mountainGeometry, mountainMaterial);
-    mountain2.position.set(350, 15, 280);
-    scene.add(mountain2);
-    
-    const mountain3 = new THREE.Mesh(mountainGeometry, mountainMaterial);
-    mountain3.position.set(380, 15, 250);
-    scene.add(mountain3);
-    
-    // Create forest (clustered around center)
-    const treeGeometry = new THREE.ConeGeometry(5, 20, 8);
-    const treeMaterial = new THREE.MeshStandardMaterial({
-      color: 0x008800,
-      roughness: 0.8
-    });
-    
-    const trunkGeometry = new THREE.CylinderGeometry(1, 1, 5, 8);
-    const trunkMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8B4513,
-      roughness: 0.9
-    });
-    
-    // Place trees in a more natural cluster around the center
-    const forestPositions = [
-      [240, 180], [260, 200], [280, 170], [250, 220], [270, 240],
-      [290, 190], [310, 210], [330, 180], [340, 200], [360, 170],
-      [220, 160], [300, 150], [320, 140], [280, 130], [260, 160]
-    ];
-    
-    for (let i = 0; i < Math.min(15, forestPositions.length); i++) {
-      const treeGroup = new THREE.Group();
-      
-      // Create trunk
-      const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-      trunk.position.y = 2.5;
-      treeGroup.add(trunk);
-      
-      // Create foliage
-      const foliage = new THREE.Mesh(treeGeometry, treeMaterial);
-      foliage.position.y = 15;
-      treeGroup.add(foliage);
-      
-      // Position the tree
-      const [x, z] = forestPositions[i];
-      treeGroup.position.set(x, 0, z);
-      
-      scene.add(treeGroup);
-    }
-  };
-  
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
-    <div 
-      ref={containerRef} 
-      className="w-full h-full" 
-      onClick={handleClick}
-    />
+    <div className="w-full h-full relative">
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full"
+        style={{ 
+          background: 'linear-gradient(135deg, #87CEEB 0%, #98FB98 100%)',
+          borderRadius: '0 0 1rem 1rem',
+          cursor: isDragging ? 'grabbing' : 'grab'
+        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+      />
+      
+      {/* Navigation controls overlay */}
+      <div className="absolute top-4 left-4 flex flex-col gap-2">
+        <div className="glass-button p-2 rounded-lg text-white/80 text-xs font-medium">
+          <div>🖱️ Drag to pan • ⌨️ WASD/Arrows</div>
+          <div>🔍 Scroll to zoom • ⌨️ +/- keys</div>
+          <div>🏠 Press 0 to reset view</div>
+          <div className="border-t border-white/20 pt-1 mt-1">
+            Zoom: {Math.round(zoom * 100)}% | Offset: ({Math.round(cameraOffset.x)}, {Math.round(cameraOffset.y)})
+          </div>
+        </div>
+        <div className="flex gap-1">
+          <button 
+            className="glass-button p-2 rounded-lg hover:bg-white/10 transition-colors text-sm"
+            onClick={() => setCameraOffset({ x: 0, y: 0 })}
+            title="Center view"
+          >
+            🏠
+          </button>
+          <button 
+            className="glass-button p-2 rounded-lg hover:bg-white/10 transition-colors text-sm"
+            onClick={() => setZoom(1)}
+            title="Reset zoom to 100%"
+          >
+            🔍
+          </button>
+          <button 
+            className="glass-button p-2 rounded-lg hover:bg-white/10 transition-colors text-sm"
+            onClick={() => { setCameraOffset({ x: 0, y: 0 }); setZoom(1); }}
+            title="Reset all (same as pressing 0)"
+          >
+            ↺
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

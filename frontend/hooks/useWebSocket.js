@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
  * @returns {Object} WebSocket connection state and methods
  */
 const useWebSocket = (url) => {
+  console.log('useWebSocket hook called with URL:', url);
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState(null);
@@ -27,11 +28,12 @@ const useWebSocket = (url) => {
     
     // Don't connect if no URL is provided
     if (!url) {
+      console.log('useWebSocket: No URL provided, skipping connection');
       cleanup();
       return cleanup;
     }
     
-    console.log('Attempting to create WebSocket connection to:', url);
+    console.log('useWebSocket: Attempting to create WebSocket connection to:', url);
     
     try {
       // Create a new WebSocket connection
@@ -81,7 +83,7 @@ const useWebSocket = (url) => {
     
     // Clean up on unmount
     return cleanup;
-  }, [url, socket]);
+  }, [url]);
   
   // Function to send messages safely
   const sendMessage = useCallback((message) => {

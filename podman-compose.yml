@@ -38,6 +38,7 @@ services:
     restart: unless-stopped
     user: "1000:1000"  # Use a specific user ID for rootless mode
 
+  # Multiple Ollama services for true parallel processing
   ollama:
     image: ollama/ollama:latest
     ports:
@@ -48,7 +49,61 @@ services:
       - agent-network
     restart: unless-stopped
     security_opt:
-      - label=disable  # Disable SELinux labeling for this container
+      - label=disable
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    environment:
+      - OLLAMA_NUM_PARALLEL=3
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_FLASH_ATTENTION=1
+
+  ollama2:
+    image: ollama/ollama:latest
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_data2:/root/.ollama:Z
+    networks:
+      - agent-network
+    restart: unless-stopped
+    security_opt:
+      - label=disable
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    environment:
+      - OLLAMA_NUM_PARALLEL=3
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_FLASH_ATTENTION=1
+
+  ollama3:
+    image: ollama/ollama:latest
+    ports:
+      - "11436:11434"
+    volumes:
+      - ollama_data3:/root/.ollama:Z
+    networks:
+      - agent-network
+    restart: unless-stopped
+    security_opt:
+      - label=disable
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    environment:
+      - OLLAMA_NUM_PARALLEL=3
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_FLASH_ATTENTION=1
 
 networks:
   agent-network:
@@ -56,4 +111,6 @@ networks:
 
 volumes:
   ollama_data:
+  ollama_data2:
+  ollama_data3:
   frontend-node-modules:  # Separate volume for node_modules to avoid permission issues

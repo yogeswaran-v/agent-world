@@ -15,30 +15,60 @@ class ConversationService:
     """Service for managing conversations between agents."""
     
     def __init__(self):
-        """Initialize the conversation service."""
+        """Initialize the conversation service with multiple LLM clients."""
         self.conversation_history: List[str] = []
         self._conversation_cache: Dict[int, str] = {}  # Cache for similar conversation scenarios
         self._pending_conversations: List[Tuple[Agent, Agent]] = []
         
-        # Initialize OpenAI client if API key is available
-        self.openai_client = None
+        # Initialize multiple OpenAI clients for parallel processing
+        self.llm_clients = {}
+        self.openai_client = None  # Default fallback client
+        
         if settings.OPENAI_API_KEY:
             try:
-                # Use synchronous OpenAI client instead of AsyncOpenAI to avoid compatibility issues
                 from openai import OpenAI
+                
+                # Initialize per-agent LLM services for true parallelism
+                for agent_key, service_config in settings.OLLAMA_SERVICES.items():
+                    try:
+                        client = OpenAI(
+                            base_url=service_config["base_url"],
+                            api_key=settings.OPENAI_API_KEY,
+                            timeout=5.0  # Faster timeout for lighter models
+                        )
+                        self.llm_clients[agent_key] = {
+                            "client": client, 
+                            "model": service_config["model"]
+                        }
+                        logger.info(f"Initialized LLM client for {agent_key} with {service_config['model']}")
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize LLM client for {agent_key}: {e}")
+                
+                # Default fallback client
                 self.openai_client = OpenAI(
                     base_url=settings.OPENAI_BASE_URL,
                     api_key=settings.OPENAI_API_KEY,
-                    # Add timeout to prevent hanging
-                    timeout=10.0
+                    timeout=5.0
                 )
-                logger.info("OpenAI client initialized successfully")
+                logger.info(f"OpenAI clients initialized: {len(self.llm_clients)} specialized + 1 fallback")
+                
             except Exception as e:
-                logger.error(f"Failed to initialize OpenAI client: {e}")
+                logger.error(f"Failed to initialize OpenAI clients: {e}")
         else:
             logger.warning("No OpenAI API key provided, using fallback conversations")
         
         logger.info("Initialized ConversationService")
+    
+    def _get_llm_client_for_agent(self, agent: Agent) -> Tuple[Any, str]:
+        """Get the appropriate LLM client and model for an agent."""
+        agent_key = f"agent_{agent.id % len(settings.OLLAMA_SERVICES)}"
+        
+        if agent_key in self.llm_clients:
+            client_info = self.llm_clients[agent_key]
+            return client_info["client"], client_info["model"]
+        
+        # Fallback to default client
+        return self.openai_client, settings.FALLBACK_MODEL if hasattr(settings, 'FALLBACK_MODEL') else settings.MODEL
         
     def add_pending_conversations(self, conversations: List[Tuple[Agent, Agent]]) -> None:
         """Add pending conversations from external sources."""
@@ -52,59 +82,71 @@ class ConversationService:
     
     # The key method that processes conversation batches
     async def process_conversation_batch_async(self) -> None:
-        """Process all pending conversations asynchronously."""
+        """Process all pending conversations asynchronously with limited concurrency."""
         if not self._pending_conversations:
             logger.debug("No pending conversations to process")
             return
         
-        current_batch = self._pending_conversations.copy()
-        self._pending_conversations = []
+        # Limit batch size to prevent Ollama overload (max 2 concurrent for 3 agents)
+        MAX_CONCURRENT_CONVERSATIONS = 2
+        current_batch = self._pending_conversations[:MAX_CONCURRENT_CONVERSATIONS]
+        self._pending_conversations = self._pending_conversations[MAX_CONCURRENT_CONVERSATIONS:]
         
-        logger.info(f"Processing conversation batch with {len(current_batch)} conversations")
+        logger.info(f"Processing conversation batch with {len(current_batch)} conversations (max {MAX_CONCURRENT_CONVERSATIONS} concurrent)")
         
-        # Process each conversation
-        for agent1, agent2 in current_batch:
-            try:
-                # Generate the conversation
-                await self._generate_conversation_async(agent1, agent2)
-            except Exception as e:
-                logger.error(f"Async conversation generation failed: {e}")
-                self._generate_conversation(agent1, agent2)
+        # Process conversations with limited concurrency using semaphore
+        semaphore = asyncio.Semaphore(2)  # Only 2 concurrent Ollama requests
+        
+        async def process_single_conversation(agent1: Agent, agent2: Agent):
+            async with semaphore:
+                try:
+                    # Generate the conversation with timeout
+                    await asyncio.wait_for(
+                        self._generate_conversation_async(agent1, agent2),
+                        timeout=8.0  # 8 second timeout per conversation
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Conversation timeout between {agent1.name} and {agent2.name}, using fallback")
+                    self._generate_conversation(agent1, agent2)
+                except Exception as e:
+                    logger.error(f"Async conversation generation failed: {e}")
+                    self._generate_conversation(agent1, agent2)
+        
+        # Process all conversations concurrently but with limited concurrency
+        if current_batch:
+            await asyncio.gather(*[
+                process_single_conversation(agent1, agent2) 
+                for agent1, agent2 in current_batch
+            ], return_exceptions=True)
     
     async def _generate_conversation_async(self, agent1: Agent, agent2: Agent) -> None:
-        """Generate a conversation between two agents asynchronously."""
+        """Generate a conversation between two agents using dedicated LLM clients."""
         try:
             timestamp = time.strftime("%H:%M:%S")
             
-            if self.openai_client:
-                # Create a prompt for conversation
-                prompt = f"""
-                Generate a natural conversation between two agents in a virtual world. 
-                
-                {agent1.name} ({agent1.personality}, Goal: {agent1.goal})
-                {agent2.name} ({agent2.personality}, Goal: {agent2.goal})
-                
-                They have just met at coordinates ({agent1.x}, {agent1.y}) in the world.
-                Make the conversation 4-7 turns and reflect their personalities and goals.
-                Don't include any system messages or instructions. Just the dialogue.
-                Format as: 
-                "{agent1.name}: [statement]"
-                "{agent2.name}: [response]"
-                """
+            # Get dedicated LLM client for the primary agent to avoid blocking
+            client, model = self._get_llm_client_for_agent(agent1)
+            
+            if client:
+                # Create a much shorter, faster prompt for ultra-light models
+                prompt = f"""Brief chat: {agent1.name} ({agent1.personality}) meets {agent2.name} ({agent2.personality}) at ({agent1.x},{agent1.y}). Generate 2-3 short exchanges."""
                 
                 try:
-                    response = self.openai_client.chat.completions.create(
-                        model=settings.MODEL,
+                    response = client.chat.completions.create(
+                        model=model,
                         messages=[
-                            {"role": "system", "content": "You are generating character-appropriate dialogue."},
                             {"role": "user", "content": prompt}
                         ],
-                        max_tokens=200
+                        max_tokens=80,  # Much shorter for speed
+                        temperature=0.7,
+                        timeout=3.0  # Very fast timeout
                     )
                     
-                    conversation = response.choices[0].message.content
+                    conversation = response.choices[0].message.content.strip()
+                    logger.debug(f"Generated conversation using {model} via dedicated client")
+                    
                 except Exception as e:
-                    logger.error(f"API error: {e}")
+                    logger.warning(f"Dedicated LLM failed for {agent1.name}, using fallback: {e}")
                     conversation = self._generate_fallback_conversation(agent1, agent2)
             else:
                 # Fallback if no API client is available

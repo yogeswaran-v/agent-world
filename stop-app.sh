@@ -13,18 +13,21 @@ echo "🛑 Stopping Agent World Application..."
 
 # Stop all containers
 echo "⏹️  Stopping containers..."
-podman stop backend frontend ollama 2>/dev/null || echo "Some containers were already stopped"
+podman stop backend frontend ollama ollama2 ollama3 2>/dev/null || echo "Some containers were already stopped"
 
 # Remove containers
 echo "🗑️  Removing containers..."
-podman rm backend frontend ollama 2>/dev/null || echo "Some containers were already removed"
+podman rm backend frontend ollama ollama2 ollama3 2>/dev/null || echo "Some containers were already removed"
 
-# Optional: Clean up images and network (uncomment if you want full cleanup)
-read -p "🧹 Remove images and network to save space? (y/n): " -n 1 -r
+# Optional: Clean up images, volumes and network (uncomment if you want full cleanup)
+read -p "🧹 Remove images, volumes, and network to save space? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "🗑️  Removing images..."
     podman rmi localhost/agent-world-backend:latest localhost/agent-world-frontend:latest docker.io/ollama/ollama:latest 2>/dev/null || true
+    
+    echo "📦 Removing volumes (⚠️  this will delete downloaded models!)..."
+    podman volume rm ollama_data ollama_data2 ollama_data3 2>/dev/null || true
     
     echo "🌐 Removing network..."
     podman network rm agent-network 2>/dev/null || true
@@ -32,9 +35,10 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "🧽 Running system cleanup..."
     podman system prune -a -f
     
-    echo "💾 Disk space reclaimed!"
+    echo "💾 Disk space reclaimed! (⚠️  Models will need to be re-downloaded next time)"
 else
-    echo "📦 Images and network preserved for faster restart"
+    echo "📦 Images, volumes, and network preserved for faster restart"
+    echo "💡 Tip: Models (3.9GB total) are kept in persistent volumes for quick restart"
 fi
 
 # Show final status

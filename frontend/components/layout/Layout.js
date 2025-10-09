@@ -18,14 +18,14 @@ const Layout = ({ children }) => {
       </div>
       
       <header className="glass border-b border-white/10 sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <div className="w-10 h-10 rounded-full glass-button flex items-center justify-center mr-4">
+              <div className="w-8 h-8 rounded-full glass-button flex items-center justify-center mr-3">
                 <svg 
                   xmlns="http://www.w3.org/2000/svg" 
-                  width="24" 
-                  height="24" 
+                  width="20" 
+                  height="20" 
                   viewBox="0 0 24 24" 
                   fill="none" 
                   stroke="currentColor" 
@@ -40,13 +40,13 @@ const Layout = ({ children }) => {
                 </svg>
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-300 to-purple-300 bg-clip-text text-transparent">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-300 to-purple-300 bg-clip-text text-transparent">
                   Agent's World
                 </h1>
                 <p className="text-xs text-white/60 font-light">AI Agent Simulation</p>
               </div>
             </div>
-            <div className="glass-button px-4 py-2 rounded-full text-sm font-medium text-white/80">
+            <div className="glass-button px-3 py-1 rounded-full text-sm font-medium text-white/80">
               <span className="flex items-center">
                 <div className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
                 Live Simulation
@@ -56,13 +56,13 @@ const Layout = ({ children }) => {
         </div>
       </header>
       
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-4">
         {children}
       </main>
       
-      <footer className="glass border-t border-white/10 mt-12 py-8">
+      <footer className="glass border-t border-white/10 mt-4 py-2">
         <div className="container mx-auto px-4 text-center">
-          <p className="text-gray-400 text-sm">
+          <p className="text-gray-400 text-xs">
             Agent's World Simulation &copy; {new Date().getFullYear()}
           </p>
         </div>

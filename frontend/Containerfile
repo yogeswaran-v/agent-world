@@ -1,20 +1,29 @@
 
 FROM node:18-alpine
 
-# Install Python 3 and pip for debugging
+# Install Python 3 and pip for debugging (cache this layer)
 RUN apk add --no-cache python3 py3-pip
 
 WORKDIR /app
 
-# Install dependencies
-COPY package.json ./
-RUN npm install
+# Copy package files first for better caching
+COPY package.json package-lock.json* ./
 
-# Copy application code
+# Install dependencies with optimizations for speed
+# Use cache mount and skip optional dependencies
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set progress=false && \
+    npm config set audit=false && \
+    npm install --prefer-offline --no-audit --silent
+
+# Copy application code (separate layer for better caching)
 COPY . .
+
+# Pre-build Next.js for faster startup (optional)
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Expose Next.js port
 EXPOSE 3000
 
-# Start in development mode instead of trying to build
+# Start in development mode
 CMD ["npm", "run", "dev"]
